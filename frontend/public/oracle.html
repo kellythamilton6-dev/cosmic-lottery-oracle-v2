@@ -291,9 +291,33 @@
 const API = 'https://cosmic-lottery-oracle-v2-production.up.railway.app';
 let lastResult = null;
 let currentMode = 'cosmic';
-let savedPredictions = JSON.parse(localStorage.getItem('predictions') || '[]');
+let savedPredictions = [];
+let authToken = null;
 
 document.getElementById('drawdate').value = new Date().toISOString().split('T')[0];
+
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'AUTH' && e.data.token) {
+    authToken = e.data.token;
+    loadPredictions();
+  }
+});
+
+async function loadPredictions() {
+  if (!authToken) return;
+  try {
+    const res = await fetch(`${API}/predictions`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    const data = await res.json();
+    if (data.success) {
+      savedPredictions = data.predictions;
+      updatePredList();
+    }
+  } catch (e) {
+    console.error('Failed to load predictions', e);
+  }
+}
 
 // ============================================================
 // MODE & WEIGHTS
@@ -765,27 +789,39 @@ function displayHistoricalResults(r) {
 // SAVE & VALIDATE
 // ============================================================
 
-function savePrediction() {
+async function savePrediction() {
   if(!lastResult) return;
-  const pred = {
-    id: Date.now(),
-    draw_date: lastResult.draw_date,
-    game: lastResult.game,
-    primary: lastResult.primary,
-    bonus: lastResult.bonus_primary,
-    sign: lastResult.sun_sign ? lastResult.sun_sign.sign : 'N/A',
-    moon: lastResult.moon ? lastResult.moon.phase : 'Historical',
-    life_path: lastResult.life_path || 0,
-    mode: currentMode,
-    validated: false,
-    matches: null
-  };
-  savedPredictions.push(pred);
-  localStorage.setItem('predictions', JSON.stringify(savedPredictions));
-  updatePredList();
+  if(!authToken) { alert('Please sign in to save predictions.'); return; }
   const btn = event.target;
-  btn.textContent = '✓ Saved!';
-  setTimeout(()=>btn.textContent='💾 Save prediction', 1500);
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/save-prediction`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({
+        birth_date: document.getElementById('birthdate').value,
+        draw_date: lastResult.draw_date,
+        game: lastResult.game,
+        primary_numbers: lastResult.primary.join(','),
+        bonus_number: lastResult.bonus_primary ?? null,
+        moon_phase: lastResult.moon ? lastResult.moon.phase : 'Historical',
+        sun_sign: lastResult.sun_sign ? lastResult.sun_sign.sign : 'N/A',
+        nakshatra: lastResult.nakshatra ? lastResult.nakshatra[0] : 'N/A',
+        life_path: lastResult.life_path || 0
+      })
+    });
+    const data = await res.json();
+    if(!data.success) throw new Error('Save failed');
+    await loadPredictions();
+    btn.textContent = '✓ Saved!';
+  } catch (e) {
+    btn.textContent = '✗ Save failed';
+  } finally {
+    setTimeout(()=>{ btn.textContent='💾 Save prediction'; btn.disabled = false; }, 1500);
+  }
 }
 
 function updatePredList() {
@@ -808,17 +844,33 @@ function updatePredList() {
   sel.innerHTML = savedPredictions.map((p,i)=>`<option value="${i}">${p.draw_date} · ${p.primary.join('-')}${p.bonus?'+'+p.bonus:''}</option>`).join('');
 }
 
-function validatePrediction() {
+async function validatePrediction() {
   const idx = document.getElementById('pred-select').value;
   const actual = document.getElementById('actual-nums').value;
   if(idx===''||!actual) { document.getElementById('val-result').innerHTML='<div class="alert alert-error">Please select a prediction and enter actual numbers.</div>'; return; }
+  if(!authToken) { document.getElementById('val-result').innerHTML='<div class="alert alert-error">Please sign in to validate predictions.</div>'; return; }
   const pred = savedPredictions[parseInt(idx)];
   const actualNums = actual.split(/[,\s]+/).map(Number).filter(n=>n>0);
-  const matches = pred.primary.filter(n=>actualNums.includes(n)).length;
-  pred.validated = true; pred.matches = matches;
-  localStorage.setItem('predictions', JSON.stringify(savedPredictions));
-  updatePredList();
-  document.getElementById('val-result').innerHTML = `<div class="alert alert-success">Matched <strong>${matches}</strong> of ${pred.primary.length} numbers!${matches>0?' Matched: '+pred.primary.filter(n=>actualNums.includes(n)).join(', '):''}</div>`;
+  try {
+    const res = await fetch(`${API}/validate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({
+        prediction_id: pred.id,
+        actual_numbers: actualNums.join(','),
+        actual_bonus: null
+      })
+    });
+    const data = await res.json();
+    if(!data.success) throw new Error('Validate failed');
+    await loadPredictions();
+    document.getElementById('val-result').innerHTML = `<div class="alert alert-success">Matched <strong>${data.matches}</strong> of ${pred.primary.length} numbers!${data.matches>0?' Matched: '+pred.primary.filter(n=>actualNums.includes(n)).join(', '):''}</div>`;
+  } catch (e) {
+    document.getElementById('val-result').innerHTML = '<div class="alert alert-error">Validation failed. Please try again.</div>';
+  }
 }
 
 // ============================================================

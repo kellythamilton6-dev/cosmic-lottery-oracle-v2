@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import date, datetime
@@ -13,8 +13,24 @@ from cosmic_engine import (
 
 import os
 import httpx
+import jwt
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
+
+SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
+
+def get_user_id(authorization: Optional[str] = Header(None)) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.split(" ", 1)[1]
+    if not SUPABASE_JWT_SECRET:
+        raise HTTPException(status_code=500, detail="Server auth not configured")
+    try:
+        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
+        return payload["sub"]
+    except jwt.PyJWTError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
 DB_URL = (
     os.environ.get("DATABASE_URL") or
     os.environ.get("DATABASE_PUBLIC_URL") or
@@ -180,37 +196,43 @@ def predict(req: PredictionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def ensure_predictions_table(conn):
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            id SERIAL PRIMARY KEY,
+            user_id UUID,
+            birth_date DATE,
+            draw_date DATE,
+            game VARCHAR(20),
+            primary_numbers VARCHAR(100),
+            bonus_number INTEGER,
+            moon_phase VARCHAR(50),
+            sun_sign VARCHAR(20),
+            nakshatra VARCHAR(50),
+            life_path INTEGER,
+            actual_numbers VARCHAR(100),
+            actual_bonus INTEGER,
+            matches INTEGER,
+            validated BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS user_id UUID"))
+
 @app.post("/save-prediction")
-def save_prediction(req: SavePredictionRequest):
+def save_prediction(req: SavePredictionRequest, user_id: str = Depends(get_user_id)):
     try:
         with engine.connect() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS predictions (
-                    id SERIAL PRIMARY KEY,
-                    birth_date DATE,
-                    draw_date DATE,
-                    game VARCHAR(20),
-                    primary_numbers VARCHAR(100),
-                    bonus_number INTEGER,
-                    moon_phase VARCHAR(50),
-                    sun_sign VARCHAR(20),
-                    nakshatra VARCHAR(50),
-                    life_path INTEGER,
-                    actual_numbers VARCHAR(100),
-                    actual_bonus INTEGER,
-                    matches INTEGER,
-                    validated BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP DEFAULT NOW()
-                )
-            """))
+            ensure_predictions_table(conn)
             result = conn.execute(text("""
                 INSERT INTO predictions
-                (birth_date, draw_date, game, primary_numbers, bonus_number,
+                (user_id, birth_date, draw_date, game, primary_numbers, bonus_number,
                 moon_phase, sun_sign, nakshatra, life_path)
-                VALUES (:birth_date, :draw_date, :game, :primary_numbers,
+                VALUES (:user_id, :birth_date, :draw_date, :game, :primary_numbers,
                 :bonus_number, :moon_phase, :sun_sign, :nakshatra, :life_path)
                 RETURNING id
             """), {
+                "user_id": user_id,
                 "birth_date": req.birth_date,
                 "draw_date": req.draw_date,
                 "game": req.game,
@@ -227,14 +249,43 @@ def save_prediction(req: SavePredictionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/predictions")
+def list_predictions(user_id: str = Depends(get_user_id)):
+    try:
+        with engine.connect() as conn:
+            ensure_predictions_table(conn)
+            rows = conn.execute(text("""
+                SELECT id, draw_date, game, primary_numbers, bonus_number,
+                       moon_phase, sun_sign, life_path, matches, validated
+                FROM predictions
+                WHERE user_id = :user_id
+                ORDER BY created_at DESC
+            """), {"user_id": user_id}).fetchall()
+        preds = [{
+            "id": r[0],
+            "draw_date": str(r[1]),
+            "game": r[2],
+            "primary": [int(n) for n in r[3].split(",")] if r[3] else [],
+            "bonus": r[4],
+            "moon": r[5],
+            "sign": r[6],
+            "life_path": r[7],
+            "matches": r[8],
+            "validated": r[9],
+        } for r in rows]
+        return {"success": True, "predictions": preds}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/validate")
-def validate(req: ValidateRequest):
+def validate(req: ValidateRequest, user_id: str = Depends(get_user_id)):
     try:
         actual = [int(n) for n in req.actual_numbers.split(",")]
         with engine.connect() as conn:
+            ensure_predictions_table(conn)
             result = conn.execute(text(
-                "SELECT primary_numbers FROM predictions WHERE id = :id"
-            ), {"id": req.prediction_id})
+                "SELECT primary_numbers FROM predictions WHERE id = :id AND user_id = :user_id"
+            ), {"id": req.prediction_id, "user_id": user_id})
             row = result.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Prediction not found")
@@ -246,12 +297,13 @@ def validate(req: ValidateRequest):
                 actual_bonus = :bonus,
                 matches = :matches,
                 validated = TRUE
-                WHERE id = :id
+                WHERE id = :id AND user_id = :user_id
             """), {
                 "actual": req.actual_numbers,
                 "bonus": req.actual_bonus,
                 "matches": matches,
-                "id": req.prediction_id
+                "id": req.prediction_id,
+                "user_id": user_id
             })
             conn.commit()
         return {
