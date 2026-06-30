@@ -1,0 +1,387 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from datetime import date, datetime
+from typing import Optional
+from sqlalchemy import create_engine, text
+from cosmic_engine import (
+    generate_predictions,
+    get_moon_phase,
+    get_historical_hot_numbers,
+    get_moon_phase_patterns
+)
+
+import os
+DB_URL = (
+    os.environ.get("DATABASE_URL") or
+    os.environ.get("DATABASE_PUBLIC_URL") or
+    "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery_v2"
+)
+engine = create_engine(DB_URL)
+
+app = FastAPI(title="Cosmic Lottery Oracle API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ============================================================
+# REQUEST MODELS
+# ============================================================
+
+class PredictionRequest(BaseModel):
+    birth_date: str
+    draw_date: Optional[str] = None
+    name: Optional[str] = ""
+    game: Optional[str] = "powerball"
+    w_moon: Optional[float] = 0.30
+    w_astro: Optional[float] = 0.25
+    w_vedic: Optional[float] = 0.25
+    w_num: Optional[float] = 0.20
+
+class SavePredictionRequest(BaseModel):
+    birth_date: str
+    draw_date: str
+    game: str
+    primary_numbers: str
+    bonus_number: Optional[int] = None
+    moon_phase: str
+    sun_sign: str
+    nakshatra: str
+    life_path: int
+
+class ValidateRequest(BaseModel):
+    prediction_id: int
+    actual_numbers: str
+    actual_bonus: Optional[int] = None
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def get_table(game):
+    if game == 'powerball':
+        return 'powerball_draws'
+    elif game == 'megamillions':
+        return 'megamillions_draws'
+    return 'powerball_draws'
+
+def get_bonus_col(game):
+    if game == 'powerball':
+        return 'powerball'
+    elif game == 'megamillions':
+        return 'megaball'
+    return 'powerball'
+
+def get_game_config(game):
+    configs = {
+        'powerball': {'main': 5, 'max': 69, 'bonus_max': 26},
+        'megamillions': {'main': 5, 'max': 70, 'bonus_max': 25},
+    }
+    return configs.get(game, configs['powerball'])
+
+# ============================================================
+# ROUTES
+# ============================================================
+
+@app.get("/")
+def root():
+    return {"message": "✦ Cosmic Lottery Oracle API is running!"}
+
+@app.get("/moon")
+def moon_today():
+    phase = get_moon_phase(date.today())
+    return phase
+
+@app.post("/predict")
+def predict(req: PredictionRequest):
+    try:
+        birth = datetime.strptime(req.birth_date, "%Y-%m-%d").date()
+        draw = datetime.strptime(req.draw_date, "%Y-%m-%d").date() if req.draw_date else date.today()
+        result = generate_predictions(
+            birth_date=birth,
+            target_date=draw,
+            name=req.name or "",
+            game=req.game,
+            w_moon=req.w_moon,
+            w_astro=req.w_astro,
+            w_vedic=req.w_vedic,
+            w_num=req.w_num
+        )
+        return {"success": True, "prediction": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/save-prediction")
+def save_prediction(req: SavePredictionRequest):
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS predictions (
+                    id SERIAL PRIMARY KEY,
+                    birth_date DATE,
+                    draw_date DATE,
+                    game VARCHAR(20),
+                    primary_numbers VARCHAR(100),
+                    bonus_number INTEGER,
+                    moon_phase VARCHAR(50),
+                    sun_sign VARCHAR(20),
+                    nakshatra VARCHAR(50),
+                    life_path INTEGER,
+                    actual_numbers VARCHAR(100),
+                    actual_bonus INTEGER,
+                    matches INTEGER,
+                    validated BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            result = conn.execute(text("""
+                INSERT INTO predictions
+                (birth_date, draw_date, game, primary_numbers, bonus_number,
+                moon_phase, sun_sign, nakshatra, life_path)
+                VALUES (:birth_date, :draw_date, :game, :primary_numbers,
+                :bonus_number, :moon_phase, :sun_sign, :nakshatra, :life_path)
+                RETURNING id
+            """), {
+                "birth_date": req.birth_date,
+                "draw_date": req.draw_date,
+                "game": req.game,
+                "primary_numbers": req.primary_numbers,
+                "bonus_number": req.bonus_number,
+                "moon_phase": req.moon_phase,
+                "sun_sign": req.sun_sign,
+                "nakshatra": req.nakshatra,
+                "life_path": req.life_path
+            })
+            pred_id = result.fetchone()[0]
+            conn.commit()
+        return {"success": True, "id": pred_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/validate")
+def validate(req: ValidateRequest):
+    try:
+        actual = [int(n) for n in req.actual_numbers.split(",")]
+        with engine.connect() as conn:
+            result = conn.execute(text(
+                "SELECT primary_numbers FROM predictions WHERE id = :id"
+            ), {"id": req.prediction_id})
+            row = result.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Prediction not found")
+            predicted = [int(n) for n in row[0].split(",")]
+            matches = len(set(predicted) & set(actual))
+            conn.execute(text("""
+                UPDATE predictions SET
+                actual_numbers = :actual,
+                actual_bonus = :bonus,
+                matches = :matches,
+                validated = TRUE
+                WHERE id = :id
+            """), {
+                "actual": req.actual_numbers,
+                "bonus": req.actual_bonus,
+                "matches": matches,
+                "id": req.prediction_id
+            })
+            conn.commit()
+        return {
+            "success": True,
+            "matches": matches,
+            "predicted": predicted,
+            "actual": actual
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/history/{game}")
+def history(game: str, limit: int = 20):
+    try:
+        table = get_table(game)
+        bonus_col = get_bonus_col(game)
+        with engine.connect() as conn:
+            result = conn.execute(text(f"""
+                SELECT draw_date, n1, n2, n3, n4, n5, {bonus_col}
+                FROM {table}
+                ORDER BY draw_date DESC LIMIT :limit
+            """), {"limit": limit})
+            rows = result.fetchall()
+        return {"success": True, "draws": [
+            {
+                "date": str(r[0]),
+                "numbers": [r[1], r[2], r[3], r[4], r[5]],
+                "bonus": r[6]
+            } for r in rows
+        ]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/frequency/{game}")
+def frequency(game: str):
+    try:
+        data = get_historical_hot_numbers(game)
+        return {
+            "success": True,
+            "hot": list(data['hot']),
+            "cold": list(data['cold']),
+            "frequency": {str(k): v for k, v in data['frequency'].items()}
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/predict-historical")
+def predict_historical(req: PredictionRequest):
+    try:
+        cfg = get_game_config(req.game)
+        table = get_table(req.game)
+        bonus_col = get_bonus_col(req.game)
+
+        with engine.connect() as conn:
+            result = conn.execute(text(f"""
+                SELECT draw_date, n1, n2, n3, n4, n5, {bonus_col}
+                FROM {table}
+                ORDER BY draw_date DESC
+            """))
+            rows = result.fetchall()
+
+        if not rows:
+            raise HTTPException(status_code=404, detail="No historical data found")
+
+        from collections import Counter
+        import random
+
+        all_nums = []
+        bonus_nums = []
+        last_seen = {}
+
+        for i, row in enumerate(rows):
+            nums = [row[1], row[2], row[3], row[4], row[5]]
+            bonus = row[6]
+            all_nums.extend(nums)
+            bonus_nums.append(bonus)
+            for n in nums:
+                if n not in last_seen:
+                    last_seen[n] = i
+            if bonus not in last_seen:
+                last_seen[bonus] = i
+
+        freq = Counter(all_nums)
+        bonus_freq = Counter(bonus_nums)
+        total_draws = len(rows)
+        max_num = cfg['max']
+
+        pool = {}
+        for n in range(1, max_num + 1):
+            f = freq.get(n, 0)
+            freq_score = (f / total_draws) * 300
+            draws_since = last_seen.get(n, total_draws)
+            overdue_score = (draws_since / total_draws) * 200
+            expected = (total_draws * 5) / max_num
+            deviation = f - expected
+            due_score = max(0, -deviation) * 2
+            pool[n] = 10.0 + freq_score + overdue_score + due_score
+
+        def weighted_pick(count):
+            available = dict(pool)
+            result = []
+            for _ in range(count):
+                total = sum(available.values())
+                r = random.uniform(0, total)
+                cum = 0
+                for n, w in sorted(available.items()):
+                    cum += w
+                    if r <= cum:
+                        result.append(n)
+                        del available[n]
+                        break
+            return sorted(result)
+
+        primary = weighted_pick(cfg['main'])
+        alt_a = weighted_pick(cfg['main'])
+        alt_b = weighted_pick(cfg['main'])
+
+        bonus_primary = bonus_alt_a = bonus_alt_b = None
+        if cfg['bonus_max'] > 0:
+            bonus_pool = {}
+            for n in range(1, cfg['bonus_max'] + 1):
+                f = bonus_freq.get(n, 0)
+                draws_since = last_seen.get(n, total_draws)
+                bonus_pool[n] = 10.0 + (f/total_draws)*300 + (draws_since/total_draws)*200
+            def pick_bonus():
+                total = sum(bonus_pool.values())
+                r = random.uniform(0, total)
+                cum = 0
+                for n, w in sorted(bonus_pool.items()):
+                    cum += w
+                    if r <= cum:
+                        return n
+                return 1
+            bonus_primary = pick_bonus()
+            bonus_alt_a = pick_bonus()
+            bonus_alt_b = pick_bonus()
+
+        hot = [n for n, c in freq.most_common(10)]
+        cold = [n for n, c in freq.most_common()[:-11:-1]]
+        most_overdue = sorted(range(1, max_num+1), key=lambda n: last_seen.get(n, total_draws), reverse=True)[:10]
+
+        return {
+            "success": True,
+            "mode": "historical",
+            "prediction": {
+                "primary": primary,
+                "alt_a": alt_a,
+                "alt_b": alt_b,
+                "bonus_primary": bonus_primary,
+                "bonus_alt_a": bonus_alt_a,
+                "bonus_alt_b": bonus_alt_b,
+                "game": req.game,
+                "draw_date": req.draw_date or str(date.today()),
+                "total_draws_analyzed": total_draws,
+                "hot_numbers": hot,
+                "cold_numbers": cold,
+                "most_overdue": most_overdue,
+                "analysis": f"Based on {total_draws} historical {req.game} draws."
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/pattern-analysis")
+def pattern_analysis(req: PredictionRequest):
+    try:
+        from pattern_engine import pattern_predict
+        result = pattern_predict(req.game or 'powerball')
+        return {"success": True, "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/predictions")
+def get_predictions():
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                SELECT id, draw_date, game, primary_numbers,
+                bonus_number, moon_phase, sun_sign, matches, validated
+                FROM predictions
+                ORDER BY created_at DESC LIMIT 50
+            """))
+            rows = result.fetchall()
+        return {"success": True, "predictions": [
+            {
+                "id": r[0],
+                "draw_date": str(r[1]),
+                "game": r[2],
+                "numbers": r[3],
+                "bonus": r[4],
+                "moon_phase": r[5],
+                "sun_sign": r[6],
+                "matches": r[7],
+                "validated": r[8]
+            } for r in rows
+        ]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
