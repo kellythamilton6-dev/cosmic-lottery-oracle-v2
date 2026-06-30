@@ -5,6 +5,7 @@ psycopg2-binary
 pydantic
 requests
 httpx
+apscheduler
 beautifulsoup4
 pandas
 ephem

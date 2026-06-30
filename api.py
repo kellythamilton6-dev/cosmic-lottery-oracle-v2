@@ -13,6 +13,8 @@ from cosmic_engine import (
 
 import os
 import httpx
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.background import BackgroundScheduler
 DB_URL = (
     os.environ.get("DATABASE_URL") or
     os.environ.get("DATABASE_PUBLIC_URL") or
@@ -20,7 +22,24 @@ DB_URL = (
 )
 engine = create_engine(DB_URL)
 
-app = FastAPI(title="Cosmic Lottery Oracle API")
+def scheduled_sync():
+    try:
+        with engine.connect() as conn:
+            sync_game('powerball', conn)
+            sync_game('megamillions', conn)
+            conn.commit()
+    except Exception:
+        pass
+
+@asynccontextmanager
+async def lifespan(app):
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(scheduled_sync, 'cron', hour=9, minute=0)
+    scheduler.start()
+    yield
+    scheduler.shutdown()
+
+app = FastAPI(title="Cosmic Lottery Oracle API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -87,6 +106,51 @@ def get_game_config(game):
 # ============================================================
 # ROUTES
 # ============================================================
+
+def sync_game(game: str, conn):
+    if game == 'powerball':
+        url = "https://data.ny.gov/resource/d6yy-54nr.json?$order=draw_date+DESC&$limit=10"
+        table = 'powerball_draws'
+        bonus_col = 'powerball'
+    else:
+        url = "https://data.ny.gov/resource/5xaw-6ayf.json?$order=draw_date+DESC&$limit=10"
+        table = 'megamillions_draws'
+        bonus_col = 'megaball'
+
+    with httpx.Client(timeout=10) as client:
+        data = client.get(url).json()
+
+    inserted = 0
+    for row in data:
+        nums = [int(n) for n in row.get("winning_numbers", "").split()]
+        if len(nums) < 5:
+            continue
+        if game == 'powerball':
+            main, bonus = nums[:5], nums[5] if len(nums) == 6 else 0
+        else:
+            main = nums[:5]
+            bonus = int(row.get("mega_ball", 0) or 0)
+        draw_date = row.get("draw_date", "")[:10]
+        existing = conn.execute(text(f"SELECT id FROM {table} WHERE draw_date = :d"), {"d": draw_date}).fetchone()
+        if not existing:
+            conn.execute(text(f"""
+                INSERT INTO {table} (draw_date, n1, n2, n3, n4, n5, {bonus_col}, game)
+                VALUES (:d, :n1, :n2, :n3, :n4, :n5, :bonus, :game)
+            """), {"d": draw_date, "n1": main[0], "n2": main[1], "n3": main[2],
+                   "n4": main[3], "n5": main[4], "bonus": bonus, "game": game})
+            inserted += 1
+    return inserted
+
+@app.post("/sync-draws")
+def sync_draws():
+    try:
+        with engine.connect() as conn:
+            pb = sync_game('powerball', conn)
+            mm = sync_game('megamillions', conn)
+            conn.commit()
+        return {"success": True, "powerball_inserted": pb, "megamillions_inserted": mm}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def root():
