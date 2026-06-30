@@ -4,6 +4,7 @@ sqlalchemy
 psycopg2-binary
 pydantic
 requests
+httpx
 beautifulsoup4
 pandas
 ephem

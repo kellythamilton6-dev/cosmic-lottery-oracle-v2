@@ -12,6 +12,7 @@ from cosmic_engine import (
 )
 
 import os
+import httpx
 DB_URL = (
     os.environ.get("DATABASE_URL") or
     os.environ.get("DATABASE_PUBLIC_URL") or
@@ -201,22 +202,33 @@ def validate(req: ValidateRequest):
 @app.get("/history/{game}")
 def history(game: str, limit: int = 20):
     try:
-        table = get_table(game)
-        bonus_col = get_bonus_col(game)
-        with engine.connect() as conn:
-            result = conn.execute(text(f"""
-                SELECT draw_date, n1, n2, n3, n4, n5, {bonus_col}
-                FROM {table}
-                ORDER BY draw_date DESC LIMIT :limit
-            """), {"limit": limit})
-            rows = result.fetchall()
-        return {"success": True, "draws": [
-            {
-                "date": str(r[0]),
-                "numbers": [r[1], r[2], r[3], r[4], r[5]],
-                "bonus": r[6]
-            } for r in rows
-        ]}
+        if game == 'powerball':
+            url = f"https://data.ny.gov/resource/d6yy-54nr.json?$order=draw_date+DESC&$limit={limit}"
+        else:
+            url = f"https://data.ny.gov/resource/5xaw-6ayf.json?$order=draw_date+DESC&$limit={limit}"
+
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+
+        draws = []
+        for row in data:
+            nums = [int(n) for n in row.get("winning_numbers", "").split()]
+            if game == 'powerball':
+                bonus = int(row.get("winning_numbers", "0 0 0 0 0 0").split()[-1]) if len(nums) == 6 else 0
+                main = nums[:5] if len(nums) >= 5 else nums
+                bonus = nums[5] if len(nums) == 6 else int(row.get("multiplier", 0) or 0)
+            else:
+                main = nums[:5] if len(nums) >= 5 else nums
+                bonus = int(row.get("mega_ball", 0) or 0)
+            draws.append({
+                "date": row.get("draw_date", "")[:10],
+                "numbers": main,
+                "bonus": bonus
+            })
+
+        return {"success": True, "draws": draws}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
