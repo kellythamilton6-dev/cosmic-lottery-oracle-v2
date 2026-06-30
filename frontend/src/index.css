@@ -1,0 +1,92 @@
+:root {
+  --purple: #534AB7; --purple-dark: #26215C; --teal: #1D9E75;
+  --coral: #D85A30; --amber: #BA7517; --bg: #0D0B1E;
+  --bg2: #161330; --bg3: #1E1A3E; --text: #E8E6F8;
+  --text2: #9B98C4; --border: rgba(255,255,255,0.1);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.fullscreen-center {
+  display: flex; align-items: center; justify-content: center;
+  height: 100vh; color: var(--text2);
+}
+
+.auth-page {
+  height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--purple-dark), #1A1640, var(--bg));
+}
+
+.auth-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px;
+  width: 360px;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(83,74,183,0.25);
+}
+
+.auth-stars { color: #A99FF8; letter-spacing: 8px; margin-bottom: 8px; }
+
+.logo { font-size: 24px; margin: 0 0 4px; color: var(--text); }
+
+.tagline { color: var(--text2); font-size: 13px; margin: 0 0 24px; }
+
+.tab-row {
+  display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+}
+
+.tab-row button {
+  flex: 1; background: none; border: none; color: var(--text2);
+  padding: 10px; cursor: pointer; font-size: 14px;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-row button.active { color: #A99FF8; border-bottom-color: #A99FF8; }
+
+.auth-card form { display: flex; flex-direction: column; gap: 12px; }
+
+.auth-card input {
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); padding: 10px 12px; border-radius: 8px; font-size: 14px;
+}
+
+.auth-card input:focus { outline: none; border-color: var(--purple); }
+
+.btn-primary {
+  background: var(--purple); color: white; border: 1px solid var(--purple);
+  padding: 10px; border-radius: 8px; font-size: 14px; cursor: pointer; margin-top: 8px;
+}
+
+.btn-primary:hover { background: #3C3489; }
+
+.error { color: #F08E6A; font-size: 13px; margin: 0; }
+
+.oracle-page { height: 100vh; display: flex; flex-direction: column; }
+
+.oracle-topbar {
+  background: linear-gradient(135deg, var(--purple-dark), #3C3489, var(--purple));
+  padding: 10px 20px; display: flex; align-items: center; justify-content: flex-end; gap: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.oracle-user { color: var(--text2); font-size: 13px; }
+
+.btn-signout {
+  background: rgba(255,255,255,0.1); color: var(--text); border: 1px solid var(--border);
+  padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+
+.btn-signout:hover { background: rgba(255,255,255,0.2); }
+
+.oracle-frame { flex: 1; border: none; width: 100%; }

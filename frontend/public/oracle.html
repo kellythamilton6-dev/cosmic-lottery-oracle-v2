@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>✦ Cosmic Lottery Oracle</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --purple: #534AB7; --purple-dark: #26215C; --teal: #1D9E75;
+    --coral: #D85A30; --amber: #BA7517; --bg: #0D0B1E;
+    --bg2: #161330; --bg3: #1E1A3E; --text: #E8E6F8;
+    --text2: #9B98C4; --border: rgba(255,255,255,0.1);
+  }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .disclaimer-bar { background:#2A1A00; border-bottom:1px solid #5C3A00; padding:10px 24px; text-align:center; }
+  .disclaimer-bar p { font-size:12px; color:#C8921A; line-height:1.6; }
+  .header { background: linear-gradient(135deg, var(--purple-dark), #3C3489, var(--purple)); padding: 28px 32px; text-align: center; border-bottom: 1px solid var(--border); }
+  .header h1 { font-size: 28px; font-weight: 300; letter-spacing: 2px; }
+  .header p { font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 6px; letter-spacing: 1px; }
+  .stars { color: var(--amber); font-size: 18px; letter-spacing: 3px; margin-bottom: 8px; }
+  .moon-bar { background: var(--bg2); padding: 12px 32px; display: flex; align-items: center; justify-content: center; gap: 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .moon-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text2); }
+  .moon-item span { color: var(--text); font-weight: 500; }
+  .nav { display: flex; background: var(--bg2); border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .nav-btn { padding: 14px 24px; font-size: 14px; background: none; border: none; color: var(--text2); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.2s; }
+  .nav-btn:hover { color: var(--text); }
+  .nav-btn.active { color: #A99FF8; border-bottom-color: #A99FF8; }
+  .content { max-width: 860px; margin: 0 auto; padding: 24px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+  .card h2 { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+  .card .sub { font-size: 13px; color: var(--text2); margin-bottom: 16px; }
+  label { font-size: 13px; color: var(--text2); display: block; margin-bottom: 4px; }
+  input, select { width: 100%; padding: 9px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; }
+  input:focus, select:focus { outline: none; border-color: var(--purple); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+  .btn { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; border: 1px solid; }
+  .btn-primary { background: var(--purple); color: white; border-color: var(--purple); }
+  .btn-primary:hover { background: #3C3489; }
+  .btn-secondary { background: transparent; color: var(--text); border-color: var(--border); }
+  .btn-secondary:hover { background: var(--bg3); }
+  .btn-lg { padding: 14px 40px; font-size: 16px; }
+  .ball { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 50%; font-size: 15px; font-weight: 600; }
+  .ball-purple { background: linear-gradient(135deg, #7F77DD, var(--purple)); color: white; box-shadow: 0 0 12px rgba(83,74,183,0.5); }
+  .ball-teal { background: linear-gradient(135deg, #25C98F, var(--teal)); color: white; }
+  .ball-coral { background: linear-gradient(135deg, #E87A55, var(--coral)); color: white; }
+  .ball-amber { background: linear-gradient(135deg, #D4922A, var(--amber)); color: white; }
+  .balls-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+  .metric { background: var(--bg3); border-radius: 8px; padding: 12px 16px; }
+  .metric-label { font-size: 12px; color: var(--text2); }
+  .metric-value { font-size: 20px; font-weight: 500; margin-top: 2px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; margin: 2px; }
+  .badge-moon { background: rgba(83,74,183,0.2); color: #A99FF8; }
+  .badge-vedic { background: rgba(29,158,117,0.2); color: #5FD9AE; }
+  .badge-astro { background: rgba(186,117,23,0.2); color: #F0B84A; }
+  .badge-num { background: rgba(216,90,48,0.2); color: #F08E6A; }
+  .result-box { background: var(--bg3); border: 1px solid var(--purple); border-radius: 12px; padding: 20px; margin-top: 16px; }
+  .section-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text2); margin-bottom: 6px; }
+  .reading { background: rgba(83,74,183,0.1); border-left: 3px solid var(--purple); border-radius: 0 8px 8px 0; padding: 14px; font-size: 14px; line-height: 1.7; color: var(--text2); margin-top: 16px; }
+  .hist-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .hist-row:last-child { border-bottom: none; }
+  .hist-date { font-size: 12px; color: var(--text2); min-width: 90px; }
+  .freq-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+  .freq-num { font-size: 13px; font-weight: 600; min-width: 28px; color: var(--text); }
+  .freq-bg { flex: 1; height: 14px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+  .freq-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--purple), #A99FF8); }
+  .freq-count { font-size: 12px; color: var(--text2); min-width: 30px; text-align: right; }
+  .range-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .range-row label { min-width: 160px; margin: 0; }
+  .range-row input[type=range] { flex: 1; accent-color: var(--purple); }
+  .range-val { font-size: 13px; color: var(--text); min-width: 36px; text-align: right; }
+  .loader { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin: 12px 0; }
+  .alert-success { background: rgba(29,158,117,0.15); border: 1px solid rgba(29,158,117,0.3); color: #5FD9AE; }
+  .alert-error { background: rgba(216,90,48,0.15); border: 1px solid rgba(216,90,48,0.3); color: #F08E6A; }
+  #gen-btn { display: block; margin: 0 auto; }
+  .mode-bar { background:var(--bg3); border-radius:10px; padding:16px 20px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+</style>
+</head>
+<body>
+
+<div class="disclaimer-bar">
+  <p>⚠ <strong>Entertainment Purposes Only</strong> — The Cosmic Lottery Oracle uses astrology, numerology and moon phase symbolism for fun and entertainment. It cannot predict lottery outcomes. Lottery draws are entirely random. Please play responsibly. Problem Gambling Helpline: <strong>1-800-522-4700</strong></p>
+</div>
+
+<div class="header">
+  <div class="stars">✦ ✦ ✦</div>
+  <h1>COSMIC LOTTERY ORACLE</h1>
+  <p>Astrology · Vedic · Numerology · Moon Phases</p>
+</div>
+
+<div class="moon-bar" id="moon-bar">
+  <div class="moon-item">🌒 Loading moon phase...</div>
+</div>
+
+<nav class="nav">
+  <button class="nav-btn active" onclick="showPanel('generate',this)">✦ Generate</button>
+  <button class="nav-btn" onclick="showPanel('history',this)">📋 History</button>
+  <button class="nav-btn" onclick="showPanel('accuracy',this)">📊 Accuracy</button>
+  <button class="nav-btn" onclick="showPanel('patterns',this)">🔍 Pattern Analysis</button>
+</nav>
+
+<div class="content">
+
+  <!-- GENERATE -->
+  <div id="panel-generate" class="panel active">
+
+    <div class="card">
+      <h2>Your cosmic profile</h2>
+      <p class="sub">Enter your details to generate personalized predictions</p>
+      <div class="grid3" style="margin-bottom:12px;">
+        <div><label>Birth date</label><input type="date" id="birthdate" value="1985-06-14"></div>
+        <div><label>Your name (optional)</label><input type="text" id="name" placeholder="For numerology"></div>
+        <div><label>Lottery game</label>
+          <select id="game">
+            <option value="powerball">Powerball</option>
+            <option value="megamillions">Mega Millions</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid2">
+        <div><label>Target draw date</label><input type="date" id="drawdate"></div>
+      </div>
+    </div>
+
+    <div class="mode-bar">
+      <div>
+        <div style="font-size:14px;font-weight:500;margin-bottom:4px;">Prediction mode</div>
+        <div style="font-size:13px;color:var(--text2);">Choose how your numbers are generated</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="mode-cosmic" class="btn btn-primary" style="font-size:13px;padding:8px 18px;" onclick="setMode('cosmic')">🔮 Cosmic</button>
+        <button id="mode-historical" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('historical')">📊 Historical Pattern</button>
+      </div>
+    </div>
+
+    <div id="cosmic-weights">
+      <div class="card">
+        <h2>Influence weights</h2>
+        <p class="sub">Linked sliders — always total 100%</p>
+        <div class="range-row"><label>🌒 Moon phases</label><input type="range" min="0" max="100" value="30" id="w-moon" oninput="adjustWeights('w-moon')"><span class="range-val" id="wm">30%</span></div>
+        <div class="range-row"><label>☀ Western astrology</label><input type="range" min="0" max="100" value="25" id="w-astro" oninput="adjustWeights('w-astro')"><span class="range-val" id="wa">25%</span></div>
+        <div class="range-row"><label>☽ Vedic (Jyotish)</label><input type="range" min="0" max="100" value="25" id="w-vedic" oninput="adjustWeights('w-vedic')"><span class="range-val" id="wv">25%</span></div>
+        <div class="range-row"><label>◆ Numerology</label><input type="range" min="0" max="100" value="20" id="w-num" oninput="adjustWeights('w-num')"><span class="range-val" id="wn">20%</span></div>
+        <div style="font-size:12px;color:var(--text2);margin-top:8px;text-align:right;" id="weight-total">Total: 100%</div>
+      </div>
+    </div>
+
+    <div id="historical-info" style="display:none;">
+      <div class="card" style="border-color:var(--teal);">
+        <h2>📊 Historical Pattern Mode</h2>
+        <p class="sub">Numbers generated purely from statistical analysis of your 3,141 real lottery draws</p>
+        <div class="grid3" style="margin-top:12px;">
+          <div style="background:var(--bg3);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">FREQUENCY</div>
+            <div style="font-size:13px;">How often each number has appeared historically</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">OVERDUE</div>
+            <div style="font-size:13px;">Numbers that haven't appeared in many draws</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">DUE PATTERNS</div>
+            <div style="font-size:13px;">Numbers below their expected statistical frequency</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary btn-lg" id="gen-btn" onclick="generateNumbers()">🔮 Generate Cosmic Numbers</button>
+
+    <div id="results" style="display:none; margin-top:16px;">
+      <div class="result-box">
+        <div class="stars" style="font-size:14px;">✦ YOUR COSMIC NUMBERS ✦</div>
+        <p id="result-sub" style="font-size:13px;color:var(--text2);margin-bottom:16px;"></p>
+        <div class="section-label">Primary prediction</div>
+        <div class="balls-row" id="balls-primary"></div>
+        <div class="section-label" style="margin-top:12px;">Alternative A</div>
+        <div class="balls-row" id="balls-alt-a"></div>
+        <div class="section-label" style="margin-top:12px;">Alternative B</div>
+        <div class="balls-row" id="balls-alt-b"></div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0;">
+        <div class="grid4">
+          <div class="metric"><div class="metric-label">Life path / Draws</div><div class="metric-value" id="r-lp">—</div></div>
+          <div class="metric"><div class="metric-label">Moon phase</div><div class="metric-value" style="font-size:14px;" id="r-moon">—</div></div>
+          <div class="metric"><div class="metric-label">Sun sign</div><div class="metric-value" style="font-size:14px;" id="r-sign">—</div></div>
+          <div class="metric"><div class="metric-label">Nakshatra</div><div class="metric-value" style="font-size:12px;" id="r-nak">—</div></div>
+        </div>
+        <div class="reading" id="r-reading"></div>
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="savePrediction()">💾 Save prediction</button>
+          <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="generateNumbers()">⟳ Regenerate</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div id="panel-history" class="panel">
+    <div class="card">
+      <h2>Recent draw history</h2>
+      <p class="sub">Latest results from your database</p>
+      <div style="display:flex;gap:10px;margin-bottom:16px;">
+        <button class="btn btn-primary" style="font-size:13px;padding:7px 16px;" onclick="loadHistory('powerball')">Powerball</button>
+        <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="loadHistory('megamillions')">Mega Millions</button>
+      </div>
+      <div id="hist-list"><div style="color:var(--text2);font-size:14px;">Click a game above to load history</div></div>
+    </div>
+    <div class="card">
+      <h2>Number frequency</h2>
+      <p class="sub">Hot and cold numbers from recent draws</p>
+      <div id="freq-area"><div style="color:var(--text2);font-size:14px;">Load history first to see frequency analysis</div></div>
+    </div>
+  </div>
+
+  <!-- ACCURACY -->
+  <div id="panel-accuracy" class="panel">
+    <div class="card">
+      <h2>Saved predictions</h2>
+      <p class="sub">Your saved predictions and validation status</p>
+      <div id="pred-list"><div style="color:var(--text2);font-size:14px;">No saved predictions yet!</div></div>
+    </div>
+    <div class="card">
+      <h2>Validate a prediction</h2>
+      <p class="sub">Enter actual winning numbers to check accuracy</p>
+      <div class="grid2" style="margin-bottom:12px;">
+        <div><label>Select prediction</label>
+          <select id="pred-select"><option value="">— save predictions first —</option></select>
+        </div>
+        <div><label>Actual winning numbers (comma separated)</label>
+          <input type="text" id="actual-nums" placeholder="e.g. 7, 14, 22, 38, 45">
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="validatePrediction()">Check accuracy</button>
+      <div id="val-result"></div>
+    </div>
+  </div>
+<!-- PATTERNS -->
+  <div id="panel-patterns" class="panel">
+    <div id="pattern-loading-overlay" style="display:none;text-align:center;padding:32px;background:var(--bg2);border-radius:12px;margin-bottom:16px;">
+      <span class="loader" style="width:32px;height:32px;border-width:3px;"></span>
+      <div style="margin-top:14px;font-size:15px;">Running pattern analysis...</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px;">Analyzing historical draws across 10 pattern systems</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;text-align:left;max-width:320px;margin-left:auto;margin-right:auto;">
+        <div id="pp1" style="font-size:12px;color:var(--text2);">⏳ Loading historical draws...</div>
+        <div id="pp2" style="font-size:12px;color:var(--text2);">⏳ Frequency analysis...</div>
+        <div id="pp3" style="font-size:12px;color:var(--text2);">⏳ Gap & overdue analysis...</div>
+        <div id="pp4" style="font-size:12px;color:var(--text2);">⏳ Pair & cluster detection...</div>
+        <div id="pp5" style="font-size:12px;color:var(--text2);">⏳ Moon phase correlations...</div>
+        <div id="pp6" style="font-size:12px;color:var(--text2);">⏳ Markov chain analysis...</div>
+        <div id="pp7" style="font-size:12px;color:var(--text2);">⏳ Generating predictions...</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>🔍 Pattern Recognition Dashboard</h2>
+      <p class="sub">10-system statistical analysis — frequency · gaps · pairs · clusters · Markov · delta · moon · cyclical · positional · balance</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <select id="pattern-game" style="width:auto;">
+          <option value="powerball">Powerball</option>
+          <option value="megamillions">Mega Millions</option>
+        </select>
+        <button class="btn btn-primary" onclick="runPatternAnalysis()" id="pattern-btn">🔍 Run Analysis</button>
+        <span id="pattern-last-run" style="font-size:12px;color:var(--text2);"></span>
+      </div>
+    </div>
+    <div id="pattern-results">
+      <div style="text-align:center;padding:40px;color:var(--text2);">
+        <div style="font-size:40px;margin-bottom:12px;">🔍</div>
+        <div style="font-size:16px;margin-bottom:8px;">Click Run Analysis to begin</div>
+        <div style="font-size:13px;">Takes 15-30 seconds · runs 10 different pattern detection algorithms</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="background:var(--bg2);border-top:1px solid var(--border);padding:24px 32px;margin-top:40px;text-align:center;">
+  <p style="font-size:13px;color:var(--text2);line-height:1.8;max-width:700px;margin:0 auto;">
+    <strong style="color:var(--text);">⚠ Legal Disclaimer</strong><br>
+    The Cosmic Lottery Oracle is provided for <strong style="color:var(--text);">entertainment and novelty purposes only</strong>. This application does not claim to predict, guarantee, or influence lottery outcomes in any way. All lottery draws are conducted through certified random number generation and are entirely unpredictable by any method.<br><br>
+    <strong style="color:#C8921A;">National Problem Gambling Helpline: 1-800-522-4700</strong> · <strong style="color:#C8921A;">ncpgambling.org</strong><br><br>
+    <span style="font-size:11px;opacity:0.6;">© 2026 Cosmic Lottery Oracle · For Entertainment Only · Not affiliated with any official lottery organization</span>
+  </p>
+</div>
+
+<script>
+const API = 'https://cosmic-lottery-oracle-v2-production.up.railway.app';
+let lastResult = null;
+let currentMode = 'cosmic';
+let savedPredictions = JSON.parse(localStorage.getItem('predictions') || '[]');
+
+document.getElementById('drawdate').value = new Date().toISOString().split('T')[0];
+
+// ============================================================
+// MODE & WEIGHTS
+// ============================================================
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('cosmic-weights').style.display = mode === 'cosmic' ? 'block' : 'none';
+  document.getElementById('historical-info').style.display = mode === 'historical' ? 'block' : 'none';
+  document.getElementById('mode-cosmic').className = mode === 'cosmic' ? 'btn btn-primary' : 'btn btn-secondary';
+  document.getElementById('mode-historical').className = mode === 'historical' ? 'btn btn-primary' : 'btn btn-secondary';
+  const btn = document.getElementById('gen-btn');
+  btn.textContent = mode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : '📊 Generate Historical Numbers';
+  btn.style.background = mode === 'historical' ? 'var(--teal)' : 'var(--purple)';
+  btn.style.borderColor = mode === 'historical' ? 'var(--teal)' : 'var(--purple)';
+  document.getElementById('results').style.display = 'none';
+}
+
+function adjustWeights(changed) {
+  const ids = ['w-moon','w-astro','w-vedic','w-num'];
+  const labels = ['wm','wa','wv','wn'];
+  const changedVal = parseInt(document.getElementById(changed).value);
+  const others = ids.filter(id => id !== changed);
+  const remaining = 100 - changedVal;
+  const currentOtherTotal = others.reduce((s,id) => s + parseInt(document.getElementById(id).value), 0);
+  if(currentOtherTotal > 0) {
+    others.forEach(id => {
+      const currentVal = parseInt(document.getElementById(id).value);
+      document.getElementById(id).value = Math.round((currentVal / currentOtherTotal) * remaining);
+    });
+  } else {
+    others.forEach(id => document.getElementById(id).value = Math.floor(remaining / others.length));
+  }
+  ids.forEach((id,i) => document.getElementById(labels[i]).textContent = document.getElementById(id).value + '%');
+  const total = ids.reduce((s,id) => s + parseInt(document.getElementById(id).value), 0);
+  document.getElementById('weight-total').textContent = `Total: ${total}%`;
+}
+
+// ============================================================
+// MOON
+// ============================================================
+
+async function loadMoon() {
+  try {
+    const res = await fetch(`${API}/moon`);
+    const data = await res.json();
+    document.getElementById('moon-bar').innerHTML = `
+      <div class="moon-item">${data.icon||'🌒'} <span>${data.phase}</span></div>
+      <div class="moon-item">Energy: <span>${Math.round(data.energy*100)}%</span></div>
+      <div class="moon-item">Bias: <span>${data.bias}</span></div>
+      <div class="moon-item">Today: <span>${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</span></div>`;
+  } catch(e) {
+    document.getElementById('moon-bar').innerHTML = '<div class="moon-item">⚠ API not connected — start uvicorn</div>';
+  }
+}
+
+// ============================================================
+// GENERATE
+// ============================================================
+
+async function generateNumbers() {
+  const btn = document.getElementById('gen-btn');
+  btn.innerHTML = '<span class="loader"></span>' + (currentMode === 'cosmic' ? 'Consulting the cosmos...' : 'Analyzing patterns...');
+  btn.disabled = true;
+
+  try {
+    if(currentMode === 'historical') {
+      const res = await fetch(`${API}/predict-historical`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          birth_date: document.getElementById('birthdate').value,
+          draw_date: document.getElementById('drawdate').value,
+          game: document.getElementById('game').value,
+        })
+      });
+      const data = await res.json();
+      if(!data.success) throw new Error('API error');
+      lastResult = data.prediction;
+      displayHistoricalResults(lastResult);
+    } else {
+      const res = await fetch(`${API}/predict`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          birth_date: document.getElementById('birthdate').value,
+          draw_date: document.getElementById('drawdate').value,
+          name: document.getElementById('name').value,
+          game: document.getElementById('game').value,
+          w_moon: parseInt(document.getElementById('w-moon').value)/100,
+          w_astro: parseInt(document.getElementById('w-astro').value)/100,
+          w_vedic: parseInt(document.getElementById('w-vedic').value)/100,
+          w_num: parseInt(document.getElementById('w-num').value)/100,
+        })
+      });
+      const data = await res.json();
+      if(!data.success) throw new Error('API error');
+      lastResult = data.prediction;
+      displayResults(lastResult);
+    }
+  } catch(e) {
+    alert('Could not connect to API. Make sure uvicorn is running!');
+  }
+
+  btn.textContent = currentMode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : '📊 Generate Historical Numbers';
+  btn.disabled = false;
+}
+
+// ============================================================
+// DISPLAY RESULTS
+// ============================================================
+
+function renderBalls(nums, bonus, containerId, ballClass) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = nums.map(n=>`<span class="ball ${ballClass}">${n}</span>`).join('');
+  if(bonus != null) c.innerHTML += `<span style="color:var(--text2);font-size:18px;margin:0 4px;">+</span><span class="ball ball-coral">${bonus}</span>`;
+}
+
+const READINGS = [
+  "The {moon} aligns with your {sign} energy, amplifying the numerological vibration of life path {lp}. These numbers carry the celestial signature of today's cosmic configuration.",
+  "Under the {moon}, your {sign} sun sign channels Mercury's precision through the {nak} nakshatra. Your life path {lp} creates a powerful numerical resonance with these selections.",
+  "The Vedic nakshatra {nak} governs today's draw window. Combined with your {sign} influence and life path {lp}, these numbers emerge from the intersection of cosmic forces.",
+  "Waxing energies from the {moon} favor your {sign} vibration. The ancient Jyotish tradition of {nak} nakshatra aligns with your personal numerological code of {lp}.",
+];
+
+const MOON_MEANINGS = {
+  'New Moon':'New beginnings and fresh starts. Numbers carry seed energy — low numbers represent potential waiting to manifest.',
+  'Waxing Crescent':'Growth and intention-setting. Numbers are ascending in nature, building toward manifestation.',
+  'First Quarter':'Action and decision. Odd numbers are favored as they represent movement and forward momentum.',
+  'Waxing Gibbous':'Refinement and momentum. Mid to high numbers carry the energy of acceleration toward completion.',
+  'Full Moon':'Peak power and illumination. High numbers are amplified under full lunar energy — the most powerful draw time.',
+  'Waning Gibbous':'Gratitude and sharing. Balanced numbers reflect the energy of abundance flowing outward.',
+  'Last Quarter':'Release and letting go. Even numbers carry the energy of completion and clearing.',
+  'Waning Crescent':'Rest and surrender. Low to mid numbers reflect quiet introspective energy before renewal.',
+};
+
+const SIGN_MEANINGS = {
+  'Aries':'Mars-ruled fire sign. Bold, pioneering numbers carry Aries energy — favors 1, 9, and their multiples representing leadership and initiation.',
+  'Taurus':'Venus-ruled earth sign. Stable, material numbers resonate with Taurus — favors 2, 6 representing beauty, abundance and sensory pleasure.',
+  'Gemini':'Mercury-ruled air sign. Versatile, dual numbers carry Gemini energy — favors 5, 14 representing communication and adaptability.',
+  'Cancer':'Moon-ruled water sign. Nurturing, intuitive numbers resonate with Cancer — favors 2, 7 representing home, emotion and psychic awareness.',
+  'Leo':'Sun-ruled fire sign. Radiant, powerful numbers carry Leo energy — favors 1, 10, 19 representing creativity, royalty and self-expression.',
+  'Virgo':'Mercury-ruled earth sign. Precise, analytical numbers resonate with Virgo — favors 3, 6 representing service, health and perfection.',
+  'Libra':'Venus-ruled air sign. Harmonious, balanced numbers carry Libra energy — favors 6, 15 representing partnership and aesthetic balance.',
+  'Scorpio':'Mars-ruled water sign. Transformative, intense numbers resonate with Scorpio — favors 1, 8 representing power, death and rebirth.',
+  'Sagittarius':'Jupiter-ruled fire sign. Expansive, philosophical numbers carry Sagittarius energy — favors 3, 12 representing wisdom and travel.',
+  'Capricorn':'Saturn-ruled earth sign. Disciplined, ambitious numbers resonate with Capricorn — favors 1, 4 representing structure and achievement.',
+  'Aquarius':'Saturn-ruled air sign. Revolutionary, humanitarian numbers carry Aquarius energy — favors 4, 8 representing innovation and collective consciousness.',
+  'Pisces':'Jupiter-ruled water sign. Mystical, dreamy numbers resonate with Pisces — favors 3, 7 representing spirituality and transcendence.',
+};
+
+const NAKSHATRA_MEANINGS = {
+  'Ashwini':'Ruled by Ketu — swift healing energy. Numbers carry the vibration of new journeys and rapid manifestation.',
+  'Bharani':'Ruled by Venus — creative and transformative. Numbers hold the energy of birth, creativity and Venusian abundance.',
+  'Krittika':'Ruled by the Sun — sharp and purifying. Solar numbers carry cutting clarity and the power to burn away obstacles.',
+  'Rohini':'Ruled by the Moon — fertile and sensual. Lunar numbers carry growth energy, beauty and material manifestation.',
+  'Mrigashira':'Ruled by Mars — searching and curious. Numbers carry the vibration of seeking, travel and gentle Martian energy.',
+  'Ardra':'Ruled by Rahu — stormy and transformative. Numbers carry Rahu\'s intensity — sudden changes and material breakthroughs.',
+  'Punarvasu':'Ruled by Jupiter — renewal and return. Jovian numbers carry the energy of restored fortune and optimistic expansion.',
+  'Pushya':'Ruled by Saturn — nourishing and auspicious. One of the most favorable nakshatras — Saturn\'s discipline brings lasting rewards.',
+  'Ashlesha':'Ruled by Mercury — serpentine wisdom. Numbers carry mystical Mercurial energy, intuition and penetrating insight.',
+  'Magha':'Ruled by Ketu — ancestral power. Numbers channel the energy of lineage, royalty and karmic inheritance.',
+  'Purva Phalguni':'Ruled by Venus — pleasure and rest. Venusian numbers carry creative enjoyment, romance and artistic manifestation.',
+  'Uttara Phalguni':'Ruled by the Sun — patronage and contracts. Solar numbers favor agreements, support from others and steady fortune.',
+  'Hasta':'Ruled by the Moon — skillful hands. Lunar numbers carry the energy of craftsmanship, healing touch and practical magic.',
+  'Chitra':'Ruled by Mars — brilliant and creative. Martian numbers carry architectural energy, beauty through effort and shining achievement.',
+  'Swati':'Ruled by Rahu — independent and scattered. Rahu numbers carry the energy of flexibility, trade and entrepreneurial breakthroughs.',
+  'Vishakha':'Ruled by Jupiter — purposeful and ambitious. Jovian numbers carry the energy of focused goals and triumphant achievement.',
+  'Anuradha':'Ruled by Saturn — devoted and friendly. Saturnine numbers favor friendship, loyalty and steady progress through dedication.',
+  'Jyeshtha':'Ruled by Mercury — eldest and powerful. Mercurial numbers carry seniority energy, protection and intellectual authority.',
+  'Mula':'Ruled by Ketu — root and foundation. Ketu numbers carry the energy of investigation, destruction of old patterns and fresh roots.',
+  'Purva Ashadha':'Ruled by Venus — invincible energy. Venusian numbers carry the vibration of early victory, purification and water energy.',
+  'Uttara Ashadha':'Ruled by the Sun — later victory. Solar numbers favor permanent achievements, universal principles and lasting success.',
+  'Shravana':'Ruled by the Moon — listening and learning. Lunar numbers carry the energy of connection, preservation and spiritual hearing.',
+  'Dhanishta':'Ruled by Mars — wealthy and musical. Martian numbers carry abundance energy, rhythm, prosperity and group harmony.',
+  'Shatabhisha':'Ruled by Rahu — healing and secretive. Rahu numbers carry mysterious healing energy and the power of concealment.',
+  'Purva Bhadra':'Ruled by Jupiter — fierce and transformative. Jovian numbers carry the energy of intense purification and two-faced fortune.',
+  'Uttara Bhadra':'Ruled by Saturn — deep wisdom. Saturnine numbers carry the energy of profound stability, serpentine depth and universal compassion.',
+  'Revati':'Ruled by Mercury — journey\'s end. Mercurial numbers carry the energy of completion, nourishment and safe passage.',
+};
+
+const LIFE_PATH_MEANINGS = {
+  1:'Leadership and independence. Your life path amplifies numbers that carry pioneer energy — you are meant to initiate, not follow.',
+  2:'Cooperation and balance. Your life path resonates with partnership numbers — harmony and diplomacy guide your fortunate vibrations.',
+  3:'Creativity and expression. Your life path amplifies creative numbers — joy, communication and artistic manifestation are your frequency.',
+  4:'Stability and structure. Your life path resonates with foundational numbers — discipline and methodical effort bring your rewards.',
+  5:'Freedom and change. Your life path amplifies dynamic numbers — adventure, versatility and sensory experience are your vibration.',
+  6:'Responsibility and nurturing. Your life path resonates with caring numbers — family, beauty and service define your lucky frequency.',
+  7:'Spirituality and analysis. Your life path amplifies mystical numbers — inner wisdom, solitude and deep investigation are your power.',
+  8:'Power and abundance. Your life path resonates with material numbers — ambition, authority and financial mastery are your frequency.',
+  9:'Completion and compassion. Your life path amplifies universal numbers — humanitarian service and spiritual completion guide your luck.',
+  11:'Master number — illumination. Your intuition is your greatest asset. Numbers carrying spiritual and visionary vibrations are amplified.',
+  22:'Master number — master builder. You carry the potential to manifest grand visions into reality. Power numbers are especially resonant.',
+  33:'Master number — master teacher. Compassion and wisdom guide your path. Healing and nurturing numbers carry special power for you.',
+};
+
+const PLANET_NUMS = {
+  'Sun':[1,10,19,28,37,46,55,64],
+  'Moon':[2,11,20,29,38,47,56,65],
+  'Mars':[9,18,27,36,45,54,63],
+  'Mercury':[5,14,23,32,41,50,59,68],
+  'Jupiter':[3,12,21,30,39,48,57,66],
+  'Venus':[6,15,24,33,42,51,60,69],
+  'Saturn':[8,17,26,35,44,53,62],
+  'Rahu':[4,13,22,31,40,49,58,67],
+  'Ketu':[7,16,25,34,43,52,61],
+};
+
+function getMoonBiasNumbers(bias) {
+  if(bias==='low') return Array.from({length:24},(_,i)=>i+1);
+  if(bias==='high') return Array.from({length:25},(_,i)=>i+45);
+  if(bias==='odd') return Array.from({length:35},(_,i)=>i*2+1);
+  if(bias==='even') return Array.from({length:34},(_,i)=>i*2+2);
+  if(bias==='asc') return Array.from({length:41},(_,i)=>i+1);
+  if(bias==='midhigh') return Array.from({length:42},(_,i)=>i+28);
+  return Array.from({length:69},(_,i)=>i+1);
+}
+
+// ── Number property helpers ──────────────────────────────────
+function isPrime(n) {
+  if(n < 2) return false;
+  for(let i=2;i<=Math.sqrt(n);i++) if(n%i===0) return false;
+  return true;
+}
+function digitSum(n) { return String(n).split('').reduce((a,d)=>a+parseInt(d),0); }
+function isTriangular(n) { const x=(Math.sqrt(8*n+1)-1)/2; return x===Math.floor(x); }
+function isFibonacci(n) { const p=s=>{ const r=Math.sqrt(s); return r===Math.floor(r); }; return p(5*n*n+4)||p(5*n*n-4); }
+function isPerfectSquare(n) { const r=Math.sqrt(n); return r===Math.floor(r); }
+function numberTier(n, max) {
+  const third = Math.floor(max/3);
+  if(n<=third) return 'low';
+  if(n<=third*2) return 'mid';
+  return 'high';
+}
+function moonTierFit(bias, n, max) {
+  const tier = numberTier(n, max);
+  const fits = {
+    low: tier==='low', high: tier==='high', midhigh: tier!=='low',
+    odd: n%2!==0, even: n%2===0, asc: n<=Math.floor(max*0.6), balanced: true
+  };
+  return fits[bias] || false;
+}
+function moonSpecificReason(bias, n, phase, max) {
+  const tier = numberTier(n, max);
+  const pct = Math.round((n/max)*100);
+  if(bias==='high')
+    return `${n} sits in the upper ${100-pct}% of the number field — the ${phase} amplifies peak-energy numbers above ${Math.floor(max*0.65)}, and ${n} draws that elevated lunar charge directly.`;
+  if(bias==='low')
+    return `${n} anchors in the lower range (bottom ${pct}% of the field) — the ${phase} favors seed-energy numbers close to 1, and ${n} holds that grounding potential.`;
+  if(bias==='midhigh')
+    return `${n} occupies the mid-to-high band — the ${phase} builds momentum in numbers above the midpoint (${Math.floor(max/2)}), and ${n} at position ${pct}% of the field carries that forward energy.`;
+  if(bias==='odd')
+    return `${n} is ${n%2!==0?'odd — carrying the active, forward-moving energy the':'even — unusual for this phase; it earned its place because the other'} ${phase} favors. Odd numbers represent motion and initiation under this lunar state.`;
+  if(bias==='even')
+    return `${n} is ${n%2===0?'even — resonating with the completion and release energy the':'odd — it entered despite the'} ${phase} favors. Even numbers reflect balance and letting-go under this lunar state.`;
+  return `${n} aligns with the ${phase} energy field — its position at ${pct}% of the number range matches the balanced lunar draw pattern of this phase.`;
+}
+
+function astroSpecificReason(n, sign, planet, signLucky) {
+  // Check direct planet number match first
+  const planetNums = PLANET_NUMS[planet] || [];
+  if(planetNums.includes(n))
+    return `${n} is a direct ${planet} number in Chaldean numerology — the same planetary ruler as your ${sign} sun sign. This is a primary resonance point, not a derived one.`;
+  // Check lucky number relationship
+  const matchedLucky = signLucky.find(l => n===l);
+  if(matchedLucky)
+    return `${n} is one of ${sign}'s core lucky numbers, ruled by ${planet}. It carries your sun sign's vibration in its most concentrated form.`;
+  const matchedMultiple = signLucky.find(l => l>1 && n%l===0);
+  if(matchedMultiple)
+    return `${n} = ${matchedMultiple} × ${n/matchedMultiple} — a harmonic multiple of your ${sign} lucky number ${matchedMultiple}. ${planet}'s influence radiates outward through these multiples into the broader number field.`;
+  // Digit sum match
+  const ds = digitSum(n);
+  if(planetNums.includes(ds))
+    return `${n}'s digit sum (${String(n).split('+').join('')} → ${ds}) reduces to ${ds}, a ${planet} number. Numerological reduction reveals the planetary frequency hidden within ${n}.`;
+  return `${n} falls within the ${planet}-influenced zone for ${sign} — its position in the number field carries your sun sign's structural energy.`;
+}
+
+function vedicSpecificReason(n, nakshatra, nakshatraRuler, nakshatraNumbers) {
+  const sacred = nakshatraNumbers.find(s => n===s);
+  if(sacred)
+    return `${n} is a sacred number of the ${nakshatra} nakshatra itself — not a derivative, but a primary vibration of this lunar mansion. ${nakshatraRuler} rules this number directly.`;
+  const sacredMultiple = nakshatraNumbers.find(s => s>1 && n%s===0);
+  if(sacredMultiple)
+    return `${n} = ${sacredMultiple} × ${n/sacredMultiple} — it multiplies the ${nakshatra} sacred number ${sacredMultiple} by ${n/sacredMultiple}, extending ${nakshatraRuler}'s reach into the higher range of the field.`;
+  const rulerNums = PLANET_NUMS[nakshatraRuler] || [];
+  if(rulerNums.includes(n))
+    return `${n} is a ${nakshatraRuler} planet number — and ${nakshatraRuler} rules the ${nakshatra} nakshatra you're drawing under today. This is a direct planetary match.`;
+  const ds = digitSum(n);
+  if(rulerNums.includes(ds))
+    return `${n} reduces to ${ds} (${n} → digit sum ${ds}), a core ${nakshatraRuler} vibration. Under the ${nakshatra} nakshatra, this hidden frequency becomes active.`;
+  return `${n} sits within the energetic field of ${nakshatra}, absorbed through proximity to its sacred numbers. ${nakshatraRuler}'s influence reaches it through the lunar mansion's broader resonance.`;
+}
+
+function numerologySpecificReason(n, lifePath) {
+  if(n===lifePath)
+    return `${n} is your life path number itself — the rarest and most powerful alignment possible. When your life path number appears in a draw prediction, it represents the fullest expression of your numerological frequency.`;
+  if(n%lifePath===0)
+    return `${n} = ${lifePath} × ${n/lifePath} — a direct harmonic of your life path ${lifePath}. Each multiple carries the same frequency at a different octave of the number field.`;
+  const ds = digitSum(n);
+  let dsChain = `${n}`;
+  let cur = n;
+  while(cur > 9 && cur !== lifePath) { cur = digitSum(cur); dsChain += ` → ${cur}`; }
+  if(cur===lifePath || ds===lifePath)
+    return `${n} reduces to ${lifePath} (${dsChain}) — the same as your life path. Numerological reduction strips away the surface number to reveal the core frequency beneath.`;
+  if((n + lifePath) % 9 === 0)
+    return `${n} + ${lifePath} = ${n+lifePath}, which is a multiple of 9 — the number of completion. In numerology, pairs that sum to 9 or its multiples share a harmonic relationship.`;
+  return `${n}'s digit sum (${ds}) and your life path (${lifePath}) share a ${(ds+lifePath)%3===0?'3-cycle resonance — both reduce to the same creative frequency':'structural relationship in the number field'}.`;
+}
+
+function numberProperties(n) {
+  const props = [];
+  if(isPrime(n)) props.push('prime');
+  if(isFibonacci(n)) props.push('Fibonacci');
+  if(isTriangular(n)) props.push('triangular');
+  if(isPerfectSquare(n)) props.push('perfect square');
+  if(n%11===0) props.push('master number multiple (11)');
+  if(n%22===0) props.push('master number multiple (22)');
+  if(digitSum(n)===7) props.push('digit sum 7 — the mystical number');
+  if(digitSum(n)===9) props.push('digit sum 9 — the number of completion');
+  if(digitSum(n)===1) props.push('digit sum 1 — the number of beginnings');
+  return props;
+}
+
+function explainNumbers(result) {
+  const primary = result.primary;
+  const moonPhase = result.moon.phase;
+  const sign = result.sun_sign.sign;
+  const nakshatra = result.nakshatra[0];
+  const nakshatraRuler = result.nakshatra[1];
+  const nakshatraNumbers = result.nakshatra[2] || [];
+  const lifePath = result.life_path;
+  const planet = result.sun_sign.planet;
+  const signLucky = result.sun_sign.lucky || [];
+  const bias = result.moon.bias;
+  const maxNum = result.game === 'megamillions' ? 70 : 69;
+
+  const vedicNums = new Set();
+  nakshatraNumbers.forEach(n => { for(let m=1;m*n<=maxNum;m++) vedicNums.add(n*m); });
+  (PLANET_NUMS[nakshatraRuler]||[]).forEach(n => vedicNums.add(n));
+
+  let html = `<div style="margin-top:20px;"><div class="section-label" style="margin-bottom:12px;">✦ Number Meanings &amp; Cosmic Explanations</div>`;
+
+  primary.forEach(num => {
+    const reasons = [];
+    const tags = [];
+
+    const isMoon = moonTierFit(bias, num, maxNum);
+    const isAstro = signLucky.some(l=>num%l===0||num===l) || (PLANET_NUMS[planet]||[]).includes(num) || (PLANET_NUMS[planet]||[]).includes(digitSum(num));
+    const isVedic = vedicNums.has(num) || (PLANET_NUMS[nakshatraRuler]||[]).includes(digitSum(num));
+    const isNum = num===lifePath || num%lifePath===0 || digitSum(num)===lifePath || (num+lifePath)%9===0;
+
+    if(isMoon) {
+      reasons.push(`<span style="color:#A99FF8;">🌒 Moon — ${moonPhase}:</span> ${moonSpecificReason(bias, num, moonPhase, maxNum)}`);
+      tags.push('<span class="badge badge-moon">Moon</span>');
+    }
+    if(isAstro) {
+      reasons.push(`<span style="color:#F0B84A;">☀ ${sign} / ${planet}:</span> ${astroSpecificReason(num, sign, planet, signLucky)}`);
+      tags.push('<span class="badge badge-astro">Astrology</span>');
+    }
+    if(isVedic) {
+      reasons.push(`<span style="color:#5FD9AE;">☽ ${nakshatra} nakshatra:</span> ${vedicSpecificReason(num, nakshatra, nakshatraRuler, nakshatraNumbers)}`);
+      tags.push('<span class="badge badge-vedic">Vedic</span>');
+    }
+    if(isNum) {
+      reasons.push(`<span style="color:#F08E6A;">◆ Life Path ${lifePath}:</span> ${numerologySpecificReason(num, lifePath)}`);
+      tags.push('<span class="badge badge-num">Numerology</span>');
+    }
+    if(reasons.length===0) {
+      // Field-energy fallback — still unique per number
+      const ds = digitSum(num);
+      reasons.push(`<span style="color:#5FD9AE;">☽ ${nakshatra} nakshatra:</span> ${num} (digit sum ${ds}) emerges from the weighted probability field under ${nakshatra}. While not a primary sacred number, its position at ${Math.round((num/maxNum)*100)}% of the range and digit resonance of ${ds} aligns with ${nakshatraRuler}'s broader influence on today's draw.`);
+      tags.push('<span class="badge badge-vedic">Vedic</span>');
+    }
+
+    // Append unique mathematical properties if interesting
+    const props = numberProperties(num);
+    const propNote = props.length > 0
+      ? `<div style="margin-top:8px;font-size:11px;color:var(--text2);border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;">
+          ✦ <em>${num} is ${props.join(' · ')}</em> — a mathematically distinctive number.
+         </div>`
+      : '';
+
+    html += `<div style="background:var(--bg3);border-radius:10px;padding:14px 16px;margin-bottom:10px;border-left:3px solid var(--purple);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span class="ball ball-purple" style="width:36px;height:36px;font-size:14px;flex-shrink:0;">${num}</span>
+        <div>${tags.join('')}</div>
+      </div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.7;">${reasons.join('<br><br>')}</div>
+      ${propNote}
+    </div>`;
+  });
+
+  html += `</div><div style="margin-top:20px;">
+    <div class="section-label" style="margin-bottom:12px;">✦ Your Cosmic Profile Explained</div>
+    <div class="grid2">
+      <div style="background:var(--bg3);border-radius:10px;padding:14px;border-top:2px solid #A99FF8;">
+        <div style="font-size:12px;color:#A99FF8;font-weight:600;margin-bottom:6px;">🌒 ${moonPhase}</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6;">${MOON_MEANINGS[moonPhase]||'Lunar energy influences number selection.'}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:14px;border-top:2px solid #F0B84A;">
+        <div style="font-size:12px;color:#F0B84A;font-weight:600;margin-bottom:6px;">☀ ${sign}</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6;">${SIGN_MEANINGS[sign]||'Sun sign contributes lucky numbers.'}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:14px;border-top:2px solid #5FD9AE;">
+        <div style="font-size:12px;color:#5FD9AE;font-weight:600;margin-bottom:6px;">☽ ${nakshatra} — ruled by ${nakshatraRuler}</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6;">${NAKSHATRA_MEANINGS[nakshatra]||'Vedic lunar mansion governs today\'s cosmic field.'}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:14px;border-top:2px solid #F08E6A;">
+        <div style="font-size:12px;color:#F08E6A;font-weight:600;margin-bottom:6px;">◆ Life Path ${lifePath}</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6;">${LIFE_PATH_MEANINGS[lifePath]||'Life path number amplifies certain frequencies.'}</div>
+      </div>
+    </div>
+  </div>`;
+  return html;
+}
+
+function bias_desc(bias) {
+  const d = {'low':'grounding foundational','high':'peak high-energy','odd':'odd action-forward','even':'even completion','asc':'ascending growth','midhigh':'mid-to-high momentum','balanced':'balanced'};
+  return d[bias]||'balanced';
+}
+
+function displayResults(r) {
+  renderBalls(r.primary, r.bonus_primary, 'balls-primary', 'ball-purple');
+  renderBalls(r.alt_a, r.bonus_alt_a, 'balls-alt-a', 'ball-teal');
+  renderBalls(r.alt_b, r.bonus_alt_b, 'balls-alt-b', 'ball-amber');
+  document.getElementById('r-lp').textContent = r.life_path;
+  document.getElementById('r-moon').textContent = (r.moon.icon||'')+ ' '+r.moon.phase.split(' ')[0];
+  document.getElementById('r-sign').textContent = r.sun_sign.sign;
+  document.getElementById('r-nak').textContent = r.nakshatra[0];
+  document.getElementById('result-sub').textContent = `Draw: ${r.draw_date} · ${r.sun_sign.sign} · ${r.moon.icon} ${r.moon.phase} · ${r.game}`;
+  const reading = READINGS[Math.floor(Math.random()*READINGS.length)]
+    .replace('{moon}',r.moon.phase).replace('{sign}',r.sun_sign.sign)
+    .replace('{lp}',r.life_path).replace('{nak}',r.nakshatra[0]);
+  document.getElementById('r-reading').innerHTML = reading + explainNumbers(r);
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function displayHistoricalResults(r) {
+  renderBalls(r.primary, r.bonus_primary, 'balls-primary', 'ball-purple');
+  renderBalls(r.alt_a, r.bonus_alt_a, 'balls-alt-a', 'ball-teal');
+  renderBalls(r.alt_b, r.bonus_alt_b, 'balls-alt-b', 'ball-amber');
+  document.getElementById('r-lp').textContent = r.total_draws_analyzed;
+  document.getElementById('r-moon').textContent = '📊 Stats';
+  document.getElementById('r-sign').textContent = r.game;
+  document.getElementById('r-nak').textContent = 'Historical';
+  document.getElementById('result-sub').textContent = `Draw: ${r.draw_date} · Statistical mode · ${r.total_draws_analyzed} draws analyzed`;
+  document.getElementById('r-reading').innerHTML = `
+    <div style="margin-bottom:12px;">${r.analysis}</div>
+    <div class="grid3" style="margin-top:12px;">
+      <div style="background:var(--bg2);border-radius:8px;padding:12px;">
+        <div style="font-size:11px;color:#F08E6A;font-weight:600;margin-bottom:6px;">🔥 HOT NUMBERS</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${r.hot_numbers.map(n=>`<span style="background:rgba(216,90,48,0.2);color:#F08E6A;padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;">${n}</span>`).join('')}</div>
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;padding:12px;">
+        <div style="font-size:11px;color:#A99FF8;font-weight:600;margin-bottom:6px;">❄ COLD NUMBERS</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${r.cold_numbers.map(n=>`<span style="background:rgba(83,74,183,0.2);color:#A99FF8;padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;">${n}</span>`).join('')}</div>
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;padding:12px;">
+        <div style="font-size:11px;color:#5FD9AE;font-weight:600;margin-bottom:6px;">⏰ MOST OVERDUE</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${r.most_overdue.map(n=>`<span style="background:rgba(29,158,117,0.2);color:#5FD9AE;padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;">${n}</span>`).join('')}</div>
+      </div>
+    </div>`;
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+// ============================================================
+// SAVE & VALIDATE
+// ============================================================
+
+function savePrediction() {
+  if(!lastResult) return;
+  const pred = {
+    id: Date.now(),
+    draw_date: lastResult.draw_date,
+    game: lastResult.game,
+    primary: lastResult.primary,
+    bonus: lastResult.bonus_primary,
+    sign: lastResult.sun_sign ? lastResult.sun_sign.sign : 'N/A',
+    moon: lastResult.moon ? lastResult.moon.phase : 'Historical',
+    life_path: lastResult.life_path || 0,
+    mode: currentMode,
+    validated: false,
+    matches: null
+  };
+  savedPredictions.push(pred);
+  localStorage.setItem('predictions', JSON.stringify(savedPredictions));
+  updatePredList();
+  const btn = event.target;
+  btn.textContent = '✓ Saved!';
+  setTimeout(()=>btn.textContent='💾 Save prediction', 1500);
+}
+
+function updatePredList() {
+  const el = document.getElementById('pred-list');
+  const sel = document.getElementById('pred-select');
+  if(savedPredictions.length===0) {
+    el.innerHTML = '<div style="color:var(--text2);font-size:14px;">No saved predictions yet</div>';
+    sel.innerHTML = '<option value="">— save predictions first —</option>';
+    return;
+  }
+  el.innerHTML = savedPredictions.map((p,i)=>`
+    <div class="hist-row">
+      <div class="hist-date">${p.draw_date}</div>
+      <div style="flex:1;">
+        <div class="balls-row">${p.primary.map(n=>`<span class="ball ball-purple" style="width:34px;height:34px;font-size:13px;">${n}</span>`).join('')}${p.bonus!=null?`<span style="color:var(--text2);">+</span><span class="ball ball-coral" style="width:34px;height:34px;font-size:13px;">${p.bonus}</span>`:''}</div>
+        <div style="font-size:12px;color:var(--text2);">${p.game} · ${p.sign} · ${p.moon} · ${p.mode||'cosmic'}</div>
+      </div>
+      <div>${p.validated?`<span style="font-size:12px;padding:3px 8px;border-radius:4px;background:rgba(29,158,117,0.2);color:#5FD9AE;">${p.matches} matched</span>`:'<span style="font-size:12px;color:var(--text2);">Pending</span>'}</div>
+    </div>`).join('');
+  sel.innerHTML = savedPredictions.map((p,i)=>`<option value="${i}">${p.draw_date} · ${p.primary.join('-')}${p.bonus?'+'+p.bonus:''}</option>`).join('');
+}
+
+function validatePrediction() {
+  const idx = document.getElementById('pred-select').value;
+  const actual = document.getElementById('actual-nums').value;
+  if(idx===''||!actual) { document.getElementById('val-result').innerHTML='<div class="alert alert-error">Please select a prediction and enter actual numbers.</div>'; return; }
+  const pred = savedPredictions[parseInt(idx)];
+  const actualNums = actual.split(/[,\s]+/).map(Number).filter(n=>n>0);
+  const matches = pred.primary.filter(n=>actualNums.includes(n)).length;
+  pred.validated = true; pred.matches = matches;
+  localStorage.setItem('predictions', JSON.stringify(savedPredictions));
+  updatePredList();
+  document.getElementById('val-result').innerHTML = `<div class="alert alert-success">Matched <strong>${matches}</strong> of ${pred.primary.length} numbers!${matches>0?' Matched: '+pred.primary.filter(n=>actualNums.includes(n)).join(', '):''}</div>`;
+}
+
+// ============================================================
+// HISTORY
+// ============================================================
+
+function loadHistory(game) {
+  document.getElementById('hist-list').innerHTML = '<div style="color:var(--text2);">Loading...</div>';
+  fetch(`${API}/history/${game}`)
+    .then(r=>r.json())
+    .then(hist=>{
+      document.getElementById('hist-list').innerHTML = hist.draws.map(d=>`
+        <div class="hist-row">
+          <div class="hist-date">${d.date}</div>
+          <div class="balls-row">${d.numbers.map(n=>`<span class="ball ball-purple" style="width:34px;height:34px;font-size:13px;">${n}</span>`).join('')}<span style="color:var(--text2);">+</span><span class="ball ball-coral" style="width:34px;height:34px;font-size:13px;">${d.bonus}</span></div>
+        </div>`).join('');
+    }).catch(()=>{ document.getElementById('hist-list').innerHTML='<div class="alert alert-error">Could not load — make sure API is running</div>'; });
+  fetch(`${API}/frequency/${game}`)
+    .then(r=>r.json())
+    .then(freq=>{
+      const hot = freq.hot.slice(0,10);
+      const cold = freq.cold.slice(0,10);
+      const maxF = Math.max(...hot.map(n=>freq.frequency[n]||0));
+      document.getElementById('freq-area').innerHTML = `<div class="grid2">
+        <div><div class="section-label" style="margin-bottom:8px;">🔥 Hot numbers</div>${hot.map(n=>`<div class="freq-row"><span class="freq-num" style="color:#F08E6A;">${n}</span><div class="freq-bg"><div class="freq-fill" style="width:${Math.round((freq.frequency[n]||0)/maxF*100)}%;background:linear-gradient(90deg,var(--coral),#F08E6A);"></div></div><span class="freq-count">${freq.frequency[n]||0}x</span></div>`).join('')}</div>
+        <div><div class="section-label" style="margin-bottom:8px;">❄ Cold numbers</div>${cold.map(n=>`<div class="freq-row"><span class="freq-num" style="color:#A99FF8;">${n}</span><div class="freq-bg"><div class="freq-fill" style="width:${Math.round((freq.frequency[n]||0)/maxF*100)}%;"></div></div><span class="freq-count">${freq.frequency[n]||0}x</span></div>`).join('')}</div>
+      </div>`;
+    });
+}
+
+function showPanel(name, btn) {
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  if(btn) btn.classList.add('active');
+  if(name==='accuracy') updatePredList();
+}
+
+const MOON_ICONS_P = {'New Moon':'🌑','Waxing Crescent':'🌒','First Quarter':'🌓','Waxing Gibbous':'🌔','Full Moon':'🌕','Waning Gibbous':'🌖','Last Quarter':'🌗','Waning Crescent':'🌘'};
+
+async function runPatternAnalysis() {
+  const game = document.getElementById('pattern-game').value;
+  const btn = document.getElementById('pattern-btn');
+  btn.innerHTML = '<span class="loader"></span>Analyzing...';
+  btn.disabled = true;
+  document.getElementById('pattern-results').innerHTML = '';
+  const overlay = document.getElementById('pattern-loading-overlay');
+  overlay.style.display = 'block';
+  const steps = ['pp1','pp2','pp3','pp4','pp5','pp6','pp7'];
+  let si = 0;
+  const stepInterval = setInterval(() => {
+    if(si > 0) document.getElementById(steps[si-1]).style.color = '#5FD9AE';
+    if(si < steps.length) { document.getElementById(steps[si]).style.color = 'var(--text)'; si++; }
+  }, 2000);
+  try {
+    const res = await fetch(`${API}/pattern-analysis`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ birth_date: '1985-01-01', game })
+    });
+    const data = await res.json();
+    clearInterval(stepInterval);
+    steps.forEach(s => document.getElementById(s).style.color = '#5FD9AE');
+    overlay.style.display = 'none';
+    if(data.success) {
+      renderPatternDashboard(data.result);
+      document.getElementById('pattern-last-run').textContent = `Last run: ${new Date().toLocaleTimeString()} · ${data.result.total_draws} draws`;
+    } else {
+      document.getElementById('pattern-results').innerHTML = '<div class="alert alert-error">Analysis failed — check API is running</div>';
+    }
+  } catch(e) {
+    clearInterval(stepInterval);
+    overlay.style.display = 'none';
+    document.getElementById('pattern-results').innerHTML = '<div class="alert alert-error">Could not connect to API. Make sure uvicorn is running on port 8001!</div>';
+  }
+  btn.innerHTML = '🔍 Run Analysis';
+  btn.disabled = false;
+}
+
+function renderPatternDashboard(r) {
+  const maxNum = r.game === 'powerball' ? 69 : 70;
+  const scores = r.confidence_scores;
+  const maxScore = Math.max(...Object.values(scores));
+  const ballsHtml = (nums, bonus, cls) =>
+    nums.map(n=>`<span class="ball ${cls}">${n}</span>`).join('') +
+    (bonus!=null?`<span style="color:var(--text2);margin:0 4px;font-size:16px;">+</span><span class="ball ball-coral">${bonus}</span>`:'');
+  const heatCells = [];
+  for(let n=1;n<=maxNum;n++) {
+    const s = scores[n]||0;
+    const pct = s/maxScore;
+    const opacity = 0.15 + pct*0.85;
+    heatCells.push(`<div style="aspect-ratio:1;border-radius:4px;background:rgba(127,119,221,${opacity});display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:${pct>0.5?'white':'var(--text2)'};" title="${n}: ${s.toFixed(1)}">${n}</div>`);
+  }
+  const freq = r.frequency;
+  const maxF = Math.max(...Object.values(freq.total));
+  const hot = freq.hot.slice(0,10);
+  const cold = freq.cold.slice(0,10);
+  const overdue = Object.entries(r.gaps)
+    .filter(([n,g])=>g.overdue&&parseInt(n)<=maxNum)
+    .sort((a,b)=>b[1].overdue_score-a[1].overdue_score)
+    .slice(0,10);
+
+  document.getElementById('pattern-results').innerHTML = `
+    <div class="card" style="border-color:var(--purple);">
+      <h2>✦ Pattern-Based Predictions</h2>
+      <p class="sub">${r.total_draws} draws analyzed · ${MOON_ICONS_P[r.current_moon_phase]||'🌒'} ${r.current_moon_phase} · Optimal sum: ${r.balance.optimal_sum_range[0]}–${r.balance.optimal_sum_range[1]}</p>
+      <div class="grid3">
+        <div style="background:var(--bg3);border-radius:10px;padding:14px;">
+          <div class="section-label">Primary prediction</div>
+          <div class="balls-row">${ballsHtml(r.primary,r.bonus_primary,'ball-purple')}</div>
+          <div style="font-size:12px;color:var(--text2);">Sum: ${r.primary.reduce((a,b)=>a+b,0)} ${r.sum_check.in_optimal_range?'✓ optimal':'⚠ outside range'}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:10px;padding:14px;">
+          <div class="section-label">Alternative A</div>
+          <div class="balls-row">${ballsHtml(r.alt_a,r.bonus_alt_a,'ball-teal')}</div>
+          <div style="font-size:12px;color:var(--text2);">Sum: ${r.alt_a.reduce((a,b)=>a+b,0)}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:10px;padding:14px;">
+          <div class="section-label">Alternative B</div>
+          <div class="balls-row">${ballsHtml(r.alt_b,r.bonus_alt_b,'ball-amber')}</div>
+          <div style="font-size:12px;color:var(--text2);">Sum: ${r.alt_b.reduce((a,b)=>a+b,0)}</div>
+        </div>
+      </div>
+      <div class="grid4" style="margin-top:12px;">
+        <div class="metric"><div class="metric-label">Recommended odd/even</div><div class="metric-value" style="font-size:15px;">${r.balance.recommended_odd_even}</div></div>
+        <div class="metric"><div class="metric-label">Recommended high/low</div><div class="metric-value" style="font-size:15px;">${r.balance.recommended_high_low}</div></div>
+        <div class="metric"><div class="metric-label">Top confidence #</div><div class="metric-value" style="font-size:15px;">${r.top_20_by_confidence[0]?.number||'—'}</div></div>
+        <div class="metric"><div class="metric-label">Draws analyzed</div><div class="metric-value">${r.total_draws}</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🎯 Confidence Heatmap</h2>
+      <p class="sub">Brighter = higher confidence from all 10 pattern systems combined</p>
+      <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin-bottom:12px;">${heatCells.join('')}</div>
+      <div class="section-label">Top 10 highest confidence numbers</div>
+      <div class="balls-row">${r.top_20_by_confidence.slice(0,10).map(x=>`<span class="ball ball-purple" style="width:36px;height:36px;font-size:13px;">${x.number}</span>`).join('')}</div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>📊 Frequency Analysis</h2>
+        <p class="sub">Hot and cold numbers</p>
+        <div class="section-label">🔥 Hot numbers</div>
+        ${hot.map(n=>`<div class="freq-row"><span class="freq-num" style="color:#F08E6A;">${n}</span><div class="freq-bg"><div class="freq-fill" style="width:${Math.round((freq.total[n]||0)/maxF*100)}%;background:linear-gradient(90deg,var(--coral),#F08E6A);"></div></div><span class="freq-count">${freq.total[n]||0}x</span></div>`).join('')}
+        <div class="section-label" style="margin-top:12px;">❄ Cold numbers</div>
+        ${cold.map(n=>`<div class="freq-row"><span class="freq-num" style="color:#A99FF8;">${n}</span><div class="freq-bg"><div class="freq-fill" style="width:${Math.round((freq.total[n]||0)/maxF*100)}%;"></div></div><span class="freq-count">${freq.total[n]||0}x</span></div>`).join('')}
+      </div>
+      <div class="card">
+        <h2>⏰ Overdue Numbers</h2>
+        <p class="sub">Numbers past their average gap</p>
+        ${overdue.length===0?'<div style="color:var(--text2);font-size:13px;">No significantly overdue numbers</div>':
+        overdue.map(([n,g])=>`<div class="freq-row"><span class="freq-num" style="color:#5FD9AE;">${n}</span><div class="freq-bg"><div class="freq-fill" style="width:${Math.min(Math.round(g.overdue_score/3*100),100)}%;background:linear-gradient(90deg,var(--teal),#5FD9AE);"></div></div><span class="freq-count" style="font-size:10px;">×${g.overdue_score}</span></div>`).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🔗 Top Pairs & Triplets</h2>
+      <p class="sub">Numbers that appear together most often</p>
+      <div class="grid2">
+        <div>
+          <div class="section-label">Top pairs</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+            ${r.pairs.top_pairs.slice(0,12).map(p=>`<span style="background:rgba(83,74,183,0.2);border:1px solid rgba(83,74,183,0.3);color:#A99FF8;padding:3px 8px;border-radius:4px;font-size:12px;">${p.numbers.join('+')} <span style="opacity:0.6;">${p.count}x</span></span>`).join('')}
+          </div>
+        </div>
+        <div>
+          <div class="section-label">Top triplets</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+            ${r.pairs.top_triplets.slice(0,8).map(t=>`<span style="background:rgba(29,158,117,0.2);border:1px solid rgba(29,158,117,0.3);color:#5FD9AE;padding:3px 8px;border-radius:4px;font-size:12px;">${t.numbers.join('+')} <span style="opacity:0.6;">${t.count}x</span></span>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🔄 Markov Chain</h2>
+      <p class="sub">Numbers most likely to follow the last draw</p>
+      <div style="margin-bottom:10px;">
+        <div class="section-label">Last draw numbers</div>
+        <div class="balls-row">${(r.markov.last_draw||[]).map(n=>`<span class="ball ball-amber" style="width:36px;height:36px;font-size:13px;">${n}</span>`).join('')}</div>
+      </div>
+      <div class="section-label">Most likely next numbers</div>
+      <div class="balls-row">${(r.markov.most_likely_next||[]).slice(0,10).map(n=>`<span class="ball ball-teal" style="width:36px;height:36px;font-size:13px;">${n}</span>`).join('')}</div>
+    </div>
+
+    <div class="card">
+      <h2>🌒 Moon Phase Correlations</h2>
+      <p class="sub">Numbers that appear most under each lunar phase</p>
+      ${Object.entries(r.moon_correlation||{}).filter(([,d])=>d.top_numbers).map(([phase,data])=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+          <div style="min-width:140px;font-size:13px;">${MOON_ICONS_P[phase]||'○'} ${phase}</div>
+          <div style="font-size:11px;color:var(--text2);min-width:70px;">${data.sample_size} draws</div>
+          <div class="balls-row" style="margin:0;">${data.top_numbers.slice(0,7).map(n=>`<span class="ball ball-purple" style="width:28px;height:28px;font-size:11px;">${n}</span>`).join('')}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>📍 Positional Analysis</h2>
+        <p class="sub">Top numbers per draw position</p>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+          ${[1,2,3,4,5].map(pos=>{
+            const data = r.positional['position_'+pos];
+            return '<div style="background:var(--bg3);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:10px;color:var(--text2);margin-bottom:6px;">Pos '+pos+'</div>'+(data?.top_5||[]).map(n=>'<div style="background:rgba(83,74,183,0.3);border-radius:4px;padding:2px;font-size:11px;font-weight:600;margin:2px;">'+n+'</div>').join('')+'</div>';
+          }).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <h2>△ Delta System</h2>
+        <p class="sub">Typical spacing between numbers</p>
+        ${r.delta?.avg_deltas?`
+          <div class="section-label">Average gap pattern</div>
+          <div style="display:flex;gap:6px;align-items:center;margin:10px 0;flex-wrap:wrap;">
+            ${r.delta.avg_deltas.map((d,i)=>`<span style="background:rgba(29,158,117,0.2);border:1px solid rgba(29,158,117,0.3);color:#5FD9AE;padding:4px 10px;border-radius:6px;font-size:13px;">${i===0?d:'+'+d}</span>`).join('<span style="color:var(--text2);">→</span>')}
+          </div>
+          <div class="section-label">Most common deltas</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+            ${(r.delta.most_common_deltas||[]).map(d=>`<span style="background:var(--bg3);padding:3px 8px;border-radius:4px;font-size:12px;">+${d}</span>`).join('')}
+          </div>`:'<div style="color:var(--text2);font-size:13px;">No delta data</div>'}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🔵 Number Clusters</h2>
+      <p class="sub">Groups of numbers that travel together across draws</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${(r.clusters?.clusters||[]).map((cluster,i)=>`
+          <div style="background:var(--bg3);border-radius:8px;padding:8px 12px;border:1px solid rgba(83,74,183,0.3);">
+            <div style="font-size:10px;color:var(--text2);margin-bottom:4px;">Cluster ${i+1}</div>
+            <div style="display:flex;gap:3px;">${cluster.map(n=>`<span class="ball ball-purple" style="width:28px;height:28px;font-size:11px;">${n}</span>`).join('')}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+loadMoon();
+updatePredList();
+</script>
+</body>
+</html>

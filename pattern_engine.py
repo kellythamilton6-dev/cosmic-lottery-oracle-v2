@@ -15,7 +15,7 @@ engine = create_engine(DB_URL)
 def load_draws(game='powerball', limit=None):
     if game == 'megamillions':
         table = 'megamillions_draws'
-        bonus_col = 'mega_ball'
+        bonus_col = 'megaball'
     else:
         table = 'powerball_draws'
         bonus_col = 'powerball'
