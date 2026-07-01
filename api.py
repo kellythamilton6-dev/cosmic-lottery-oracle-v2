@@ -90,6 +90,8 @@ class SavePredictionRequest(BaseModel):
     sun_sign: str
     nakshatra: str
     life_path: int
+    mode: Optional[str] = "cosmic"
+    weights_json: Optional[str] = None
 
 class ValidateRequest(BaseModel):
     prediction_id: int
@@ -224,10 +226,14 @@ def ensure_predictions_table(conn):
             actual_bonus INTEGER,
             matches INTEGER,
             validated BOOLEAN DEFAULT FALSE,
+            mode VARCHAR(20) DEFAULT 'cosmic',
+            weights_json TEXT,
             created_at TIMESTAMP DEFAULT NOW()
         )
     """))
     conn.execute(text("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS user_id UUID"))
+    conn.execute(text("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS mode VARCHAR(20) DEFAULT 'cosmic'"))
+    conn.execute(text("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS weights_json TEXT"))
 
 @app.post("/save-prediction")
 def save_prediction(req: SavePredictionRequest, user_id: str = Depends(get_user_id)):
@@ -237,9 +243,9 @@ def save_prediction(req: SavePredictionRequest, user_id: str = Depends(get_user_
             result = conn.execute(text("""
                 INSERT INTO predictions
                 (user_id, birth_date, draw_date, game, primary_numbers, bonus_number,
-                moon_phase, sun_sign, nakshatra, life_path)
+                moon_phase, sun_sign, nakshatra, life_path, mode, weights_json)
                 VALUES (:user_id, :birth_date, :draw_date, :game, :primary_numbers,
-                :bonus_number, :moon_phase, :sun_sign, :nakshatra, :life_path)
+                :bonus_number, :moon_phase, :sun_sign, :nakshatra, :life_path, :mode, :weights_json)
                 RETURNING id
             """), {
                 "user_id": user_id,
@@ -251,7 +257,9 @@ def save_prediction(req: SavePredictionRequest, user_id: str = Depends(get_user_
                 "moon_phase": req.moon_phase,
                 "sun_sign": req.sun_sign,
                 "nakshatra": req.nakshatra,
-                "life_path": req.life_path
+                "life_path": req.life_path,
+                "mode": req.mode,
+                "weights_json": req.weights_json,
             })
             pred_id = result.fetchone()[0]
             conn.commit()
@@ -266,7 +274,8 @@ def list_predictions(user_id: str = Depends(get_user_id)):
             ensure_predictions_table(conn)
             rows = conn.execute(text("""
                 SELECT id, draw_date, game, primary_numbers, bonus_number,
-                       moon_phase, sun_sign, life_path, matches, validated
+                       moon_phase, sun_sign, life_path, matches, validated,
+                       mode, weights_json
                 FROM predictions
                 WHERE user_id = :user_id
                 ORDER BY created_at DESC
@@ -282,6 +291,8 @@ def list_predictions(user_id: str = Depends(get_user_id)):
             "life_path": r[7],
             "matches": r[8],
             "validated": r[9],
+            "mode": r[10] or "cosmic",
+            "weights_json": r[11],
         } for r in rows]
         return {"success": True, "predictions": preds}
     except Exception as e:

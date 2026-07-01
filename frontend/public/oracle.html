@@ -226,25 +226,77 @@
 
   <!-- ACCURACY -->
   <div id="panel-accuracy" class="panel">
-    <div class="card">
-      <h2>Saved predictions</h2>
-      <p class="sub">Your saved predictions and validation status</p>
-      <div id="pred-list"><div style="color:var(--text2);font-size:14px;">No saved predictions yet!</div></div>
+
+    <!-- Summary stats -->
+    <div id="accuracy-summary" style="display:none;">
+      <div class="grid4" style="margin-bottom:16px;">
+        <div class="card" style="text-align:center;padding:16px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">TOTAL SAVED</div>
+          <div style="font-size:28px;font-weight:500;" id="acc-total">0</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">VALIDATED</div>
+          <div style="font-size:28px;font-weight:500;color:#5FD9AE;" id="acc-validated">0</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">AVG MATCHES</div>
+          <div style="font-size:28px;font-weight:500;color:#A99FF8;" id="acc-avg">—</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">BEST MATCH</div>
+          <div style="font-size:28px;font-weight:500;color:#F0B84A;" id="acc-best">—</div>
+        </div>
+      </div>
+
+      <!-- Mode comparison -->
+      <div class="card" style="margin-bottom:16px;">
+        <h2>🔮 Cosmic vs 📊 Historical Trends</h2>
+        <p class="sub">Average matches per validated prediction by mode</p>
+        <div class="grid2" style="margin-top:12px;" id="acc-mode-compare">
+          <div style="background:var(--bg3);border-radius:10px;padding:16px;text-align:center;">
+            <div style="font-size:13px;color:#A99FF8;font-weight:600;margin-bottom:8px;">🔮 Cosmic</div>
+            <div style="font-size:32px;font-weight:300;" id="acc-cosmic-avg">—</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:4px;" id="acc-cosmic-count">0 predictions</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:10px;padding:16px;text-align:center;">
+            <div style="font-size:13px;color:#5FD9AE;font-weight:600;margin-bottom:8px;">📊 Historical Trends</div>
+            <div style="font-size:32px;font-weight:300;" id="acc-pattern-avg">—</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:4px;" id="acc-pattern-count">0 predictions</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top influences -->
+      <div class="card" style="margin-bottom:16px;">
+        <h2>🏆 Best performing influences</h2>
+        <p class="sub">Which weight settings produced the most matches across validated predictions</p>
+        <div id="acc-top-influences" style="margin-top:12px;color:var(--text2);font-size:14px;">Validate predictions to see influence performance.</div>
+      </div>
     </div>
-    <div class="card">
-      <h2>Validate a prediction</h2>
-      <p class="sub">Enter actual winning numbers to check accuracy</p>
+
+    <!-- Validate -->
+    <div class="card" style="margin-bottom:16px;">
+      <h2>✓ Validate a prediction</h2>
+      <p class="sub">Enter the actual winning numbers to score a saved prediction</p>
       <div class="grid2" style="margin-bottom:12px;">
         <div><label>Select prediction</label>
           <select id="pred-select"><option value="">— save predictions first —</option></select>
         </div>
-        <div><label>Actual winning numbers (comma separated)</label>
-          <input type="text" id="actual-nums" placeholder="e.g. 7, 14, 22, 38, 45">
+        <div><label>Actual winning numbers (comma or space separated)</label>
+          <input type="text" id="actual-nums" placeholder="e.g. 7 14 22 38 45">
         </div>
       </div>
       <button class="btn btn-primary" onclick="validatePrediction()">Check accuracy</button>
-      <div id="val-result"></div>
+      <div id="val-result" style="margin-top:12px;"></div>
     </div>
+
+    <!-- Prediction list -->
+    <div class="card">
+      <h2>📋 All saved predictions</h2>
+      <p class="sub">Click a row to see full influence details</p>
+      <div id="pred-list"><div style="color:var(--text2);font-size:14px;">No saved predictions yet — generate and save one first.</div></div>
+    </div>
+
   </div>
 <!-- PATTERNS -->
   <div id="panel-patterns" class="panel">
@@ -888,7 +940,11 @@ async function savePrediction() {
         moon_phase: lastResult.moon ? lastResult.moon.phase : 'Pattern',
         sun_sign: lastResult.sun_sign ? lastResult.sun_sign.sign : 'N/A',
         nakshatra: lastResult.nakshatra ? lastResult.nakshatra[0] : 'N/A',
-        life_path: lastResult.life_path || 0
+        life_path: lastResult.life_path || 0,
+        mode: currentMode,
+        weights_json: currentMode === 'cosmic'
+          ? JSON.stringify({moon: document.getElementById('w-moon').value, astro: document.getElementById('w-astro').value, vedic: document.getElementById('w-vedic').value, num: document.getElementById('w-num').value})
+          : JSON.stringify({frequency: document.getElementById('wp-freq').value, overdue: document.getElementById('wp-overdue').value, trend: document.getElementById('wp-trend').value, moon: document.getElementById('wp-moon').value, pairs: document.getElementById('wp-pairs').value})
       })
     });
     const data = await res.json();
@@ -902,24 +958,98 @@ async function savePrediction() {
   }
 }
 
+function formatWeights(mode, weightsJson) {
+  if (!weightsJson) return '';
+  try {
+    const w = JSON.parse(weightsJson);
+    if (mode === 'cosmic') {
+      return `🌒 Moon ${w.moon}% · ☀ Astro ${w.astro}% · ☽ Vedic ${w.vedic}% · ◆ Num ${w.num}%`;
+    } else {
+      return `📈 Freq ${w.frequency}% · ⏰ Overdue ${w.overdue}% · 🔗 Trend ${w.trend}% · 🌒 Moon ${w.moon}% · 🔵 Pairs ${w.pairs}%`;
+    }
+  } catch { return ''; }
+}
+
 function updatePredList() {
   const el = document.getElementById('pred-list');
   const sel = document.getElementById('pred-select');
-  if(savedPredictions.length===0) {
-    el.innerHTML = '<div style="color:var(--text2);font-size:14px;">No saved predictions yet</div>';
+
+  if (savedPredictions.length === 0) {
+    el.innerHTML = '<div style="color:var(--text2);font-size:14px;">No saved predictions yet — generate and save one first.</div>';
     sel.innerHTML = '<option value="">— save predictions first —</option>';
+    document.getElementById('accuracy-summary').style.display = 'none';
     return;
   }
-  el.innerHTML = savedPredictions.map((p,i)=>`
-    <div class="hist-row">
-      <div class="hist-date">${p.draw_date}</div>
-      <div style="flex:1;">
-        <div class="balls-row">${p.primary.map(n=>`<span class="ball ball-purple" style="width:34px;height:34px;font-size:13px;">${n}</span>`).join('')}${p.bonus!=null?`<span style="color:var(--text2);">+</span><span class="ball ball-coral" style="width:34px;height:34px;font-size:13px;">${p.bonus}</span>`:''}</div>
-        <div style="font-size:12px;color:var(--text2);">${p.game} · ${p.sign} · ${p.moon} · ${p.mode||'cosmic'}</div>
+
+  // Summary stats
+  document.getElementById('accuracy-summary').style.display = 'block';
+  const validated = savedPredictions.filter(p => p.validated);
+  document.getElementById('acc-total').textContent = savedPredictions.length;
+  document.getElementById('acc-validated').textContent = validated.length;
+
+  if (validated.length > 0) {
+    const avg = (validated.reduce((s,p) => s + (p.matches||0), 0) / validated.length).toFixed(1);
+    const best = Math.max(...validated.map(p => p.matches||0));
+    document.getElementById('acc-avg').textContent = avg;
+    document.getElementById('acc-best').textContent = best;
+  }
+
+  // Mode comparison
+  const cosmicV = validated.filter(p => (p.mode||'cosmic') === 'cosmic');
+  const patternV = validated.filter(p => p.mode === 'pattern');
+  document.getElementById('acc-cosmic-avg').textContent = cosmicV.length
+    ? (cosmicV.reduce((s,p) => s+(p.matches||0),0)/cosmicV.length).toFixed(1) : '—';
+  document.getElementById('acc-cosmic-count').textContent = `${cosmicV.length} validated`;
+  document.getElementById('acc-pattern-avg').textContent = patternV.length
+    ? (patternV.reduce((s,p) => s+(p.matches||0),0)/patternV.length).toFixed(1) : '—';
+  document.getElementById('acc-pattern-count').textContent = `${patternV.length} validated`;
+
+  // Top influences — find the single best validated prediction per mode
+  const influenceHtml = validated.length === 0
+    ? '<div style="color:var(--text2);">Validate predictions to see influence performance.</div>'
+    : validated
+        .slice()
+        .sort((a,b) => (b.matches||0) - (a.matches||0))
+        .slice(0, 3)
+        .map((p,i) => {
+          const medal = ['🥇','🥈','🥉'][i];
+          const modeLabel = (p.mode||'cosmic') === 'cosmic' ? '🔮 Cosmic' : '📊 Historical Trends';
+          const wStr = formatWeights(p.mode||'cosmic', p.weights_json);
+          return `<div style="background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-size:15px;">${medal} <strong>${p.matches} match${p.matches!==1?'es':''}</strong> · ${modeLabel} · ${p.game} · ${p.draw_date}</span>
+            </div>
+            ${wStr ? `<div style="font-size:12px;color:var(--text2);">${wStr}</div>` : ''}
+          </div>`;
+        }).join('');
+  document.getElementById('acc-top-influences').innerHTML = influenceHtml;
+
+  // Prediction list
+  el.innerHTML = savedPredictions.map((p,i) => {
+    const modeLabel = (p.mode||'cosmic') === 'cosmic' ? '🔮 Cosmic' : '📊 Historical';
+    const modeColor = (p.mode||'cosmic') === 'cosmic' ? '#A99FF8' : '#5FD9AE';
+    const ballClass = (p.mode||'cosmic') === 'cosmic' ? 'ball-purple' : 'ball-teal';
+    const wStr = formatWeights(p.mode||'cosmic', p.weights_json);
+    return `<div class="hist-row" style="flex-direction:column;align-items:flex-start;gap:6px;padding:14px 0;">
+      <div style="display:flex;align-items:center;gap:12px;width:100%;">
+        <div class="hist-date">${p.draw_date}</div>
+        <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,0.3);color:${modeColor};font-weight:600;">${modeLabel}</span>
+        <span style="font-size:12px;color:var(--text2);">${p.game}</span>
+        <div style="margin-left:auto;">${p.validated
+          ? `<span style="font-size:12px;padding:3px 10px;border-radius:4px;background:rgba(29,158,117,0.2);color:#5FD9AE;font-weight:600;">${p.matches} matched</span>`
+          : '<span style="font-size:12px;color:var(--text2);">Pending</span>'}</div>
       </div>
-      <div>${p.validated?`<span style="font-size:12px;padding:3px 8px;border-radius:4px;background:rgba(29,158,117,0.2);color:#5FD9AE;">${p.matches} matched</span>`:'<span style="font-size:12px;color:var(--text2);">Pending</span>'}</div>
-    </div>`).join('');
-  sel.innerHTML = savedPredictions.map((p,i)=>`<option value="${i}">${p.draw_date} · ${p.primary.join('-')}${p.bonus?'+'+p.bonus:''}</option>`).join('');
+      <div class="balls-row" style="margin:2px 0;">
+        ${p.primary.map(n=>`<span class="ball ${ballClass}" style="width:32px;height:32px;font-size:12px;">${n}</span>`).join('')}
+        ${p.bonus!=null?`<span style="color:var(--text2);margin:0 2px;">+</span><span class="ball ball-coral" style="width:32px;height:32px;font-size:12px;">${p.bonus}</span>`:''}
+      </div>
+      ${wStr ? `<div style="font-size:11px;color:var(--text2);">${wStr}</div>` : ''}
+    </div>`;
+  }).join('<hr style="border:none;border-top:1px solid var(--border);margin:0;">');
+
+  sel.innerHTML = savedPredictions.map((p,i) =>
+    `<option value="${i}">${p.draw_date} · ${(p.mode||'cosmic')==='cosmic'?'🔮':'📊'} · ${p.primary.join('-')}${p.bonus?'+'+p.bonus:''}</option>`
+  ).join('');
 }
 
 async function validatePrediction() {
