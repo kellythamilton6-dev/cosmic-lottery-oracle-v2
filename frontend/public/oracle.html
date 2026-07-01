@@ -135,7 +135,7 @@
       </div>
       <div style="display:flex;gap:8px;">
         <button id="mode-cosmic" class="btn btn-primary" style="font-size:13px;padding:8px 18px;" onclick="setMode('cosmic')">🔮 Cosmic</button>
-        <button id="mode-pattern" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('pattern')">📊 Pattern Analysis</button>
+        <button id="mode-pattern" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('pattern')">📊 Historical Trends</button>
       </div>
     </div>
 
@@ -153,7 +153,7 @@
 
     <div id="pattern-weights" style="display:none;">
       <div class="card" style="border-color:var(--teal);">
-        <h2>📊 Pattern Analysis Mode</h2>
+        <h2>📊 Historical Trends Mode</h2>
         <p class="sub">10-system statistical engine — tune which signals drive your numbers</p>
         <div style="margin-top:12px;">
           <div class="range-row"><label>📈 Frequency <span style="color:var(--text2);font-size:11px;font-weight:normal;">How often each number historically appears</span></label><input type="range" min="0" max="100" value="50" id="wp-freq" oninput="adjustPatternWeights('wp-freq')"><span class="range-val" id="wpf">50%</span></div>
