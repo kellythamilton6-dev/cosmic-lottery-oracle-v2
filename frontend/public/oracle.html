@@ -135,7 +135,7 @@
       </div>
       <div style="display:flex;gap:8px;">
         <button id="mode-cosmic" class="btn btn-primary" style="font-size:13px;padding:8px 18px;" onclick="setMode('cosmic')">🔮 Cosmic</button>
-        <button id="mode-historical" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('historical')">📊 Historical Pattern</button>
+        <button id="mode-pattern" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('pattern')">📊 Pattern Analysis</button>
       </div>
     </div>
 
@@ -151,23 +151,17 @@
       </div>
     </div>
 
-    <div id="historical-info" style="display:none;">
+    <div id="pattern-weights" style="display:none;">
       <div class="card" style="border-color:var(--teal);">
-        <h2>📊 Historical Pattern Mode</h2>
-        <p class="sub">Numbers generated purely from statistical analysis of your 3,141 real lottery draws</p>
-        <div class="grid3" style="margin-top:12px;">
-          <div style="background:var(--bg3);border-radius:8px;padding:12px;text-align:center;">
-            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">FREQUENCY</div>
-            <div style="font-size:13px;">How often each number has appeared historically</div>
-          </div>
-          <div style="background:var(--bg3);border-radius:8px;padding:12px;text-align:center;">
-            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">OVERDUE</div>
-            <div style="font-size:13px;">Numbers that haven't appeared in many draws</div>
-          </div>
-          <div style="background:var(--bg3);border-radius:8px;padding:12px;text-align:center;">
-            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">DUE PATTERNS</div>
-            <div style="font-size:13px;">Numbers below their expected statistical frequency</div>
-          </div>
+        <h2>📊 Pattern Analysis Mode</h2>
+        <p class="sub">10-system statistical engine — tune which signals drive your numbers</p>
+        <div style="margin-top:12px;">
+          <div class="range-row"><label>📈 Frequency <span style="color:var(--text2);font-size:11px;font-weight:normal;">How often each number historically appears</span></label><input type="range" min="0" max="100" value="50" id="wp-freq" oninput="adjustPatternWeights('wp-freq')"><span class="range-val" id="wpf">50%</span></div>
+          <div class="range-row"><label>⏰ Overdue <span style="color:var(--text2);font-size:11px;font-weight:normal;">Numbers past their expected gap</span></label><input type="range" min="0" max="100" value="20" id="wp-overdue" oninput="adjustPatternWeights('wp-overdue')"><span class="range-val" id="wpo">20%</span></div>
+          <div class="range-row"><label>🔗 Trend (Markov) <span style="color:var(--text2);font-size:11px;font-weight:normal;">Numbers likely to follow the last draw</span></label><input type="range" min="0" max="100" value="15" id="wp-trend" oninput="adjustPatternWeights('wp-trend')"><span class="range-val" id="wpt">15%</span></div>
+          <div class="range-row"><label>🌒 Moon Phase <span style="color:var(--text2);font-size:11px;font-weight:normal;">Numbers that score well under today's moon</span></label><input type="range" min="0" max="100" value="10" id="wp-moon" oninput="adjustPatternWeights('wp-moon')"><span class="range-val" id="wpm">10%</span></div>
+          <div class="range-row"><label>🔵 Pairs &amp; Clusters <span style="color:var(--text2);font-size:11px;font-weight:normal;">Numbers that appear together most often</span></label><input type="range" min="0" max="100" value="5" id="wp-pairs" oninput="adjustPatternWeights('wp-pairs')"><span class="range-val" id="wpp">5%</span></div>
+          <div style="font-size:12px;color:var(--text2);margin-top:8px;text-align:right;" id="pattern-weight-total">Total: 100%</div>
         </div>
       </div>
     </div>
@@ -176,7 +170,7 @@
 
     <div id="results" style="display:none; margin-top:16px;">
       <div class="result-box">
-        <div class="stars" style="font-size:14px;">✦ YOUR COSMIC NUMBERS ✦</div>
+        <div class="stars" style="font-size:14px;" id="result-title">✦ YOUR COSMIC NUMBERS ✦</div>
         <p id="result-sub" style="font-size:13px;color:var(--text2);margin-bottom:16px;"></p>
         <div class="section-label">Primary prediction</div>
         <div class="balls-row" id="balls-primary"></div>
@@ -326,14 +320,34 @@ async function loadPredictions() {
 function setMode(mode) {
   currentMode = mode;
   document.getElementById('cosmic-weights').style.display = mode === 'cosmic' ? 'block' : 'none';
-  document.getElementById('historical-info').style.display = mode === 'historical' ? 'block' : 'none';
+  document.getElementById('pattern-weights').style.display = mode === 'pattern' ? 'block' : 'none';
   document.getElementById('mode-cosmic').className = mode === 'cosmic' ? 'btn btn-primary' : 'btn btn-secondary';
-  document.getElementById('mode-historical').className = mode === 'historical' ? 'btn btn-primary' : 'btn btn-secondary';
+  document.getElementById('mode-pattern').className = mode === 'pattern' ? 'btn btn-primary' : 'btn btn-secondary';
   const btn = document.getElementById('gen-btn');
-  btn.textContent = mode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : '📊 Generate Historical Numbers';
-  btn.style.background = mode === 'historical' ? 'var(--teal)' : 'var(--purple)';
-  btn.style.borderColor = mode === 'historical' ? 'var(--teal)' : 'var(--purple)';
+  btn.textContent = mode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : '📊 Generate Pattern Numbers';
+  btn.style.background = mode === 'pattern' ? 'var(--teal)' : 'var(--purple)';
+  btn.style.borderColor = mode === 'pattern' ? 'var(--teal)' : 'var(--purple)';
   document.getElementById('results').style.display = 'none';
+}
+
+function adjustPatternWeights(changed) {
+  const ids = ['wp-freq','wp-overdue','wp-trend','wp-moon','wp-pairs'];
+  const labels = ['wpf','wpo','wpt','wpm','wpp'];
+  const changedVal = parseInt(document.getElementById(changed).value);
+  const others = ids.filter(id => id !== changed);
+  const remaining = 100 - changedVal;
+  const currentOtherTotal = others.reduce((s,id) => s + parseInt(document.getElementById(id).value), 0);
+  if(currentOtherTotal > 0) {
+    others.forEach(id => {
+      const currentVal = parseInt(document.getElementById(id).value);
+      document.getElementById(id).value = Math.round((currentVal / currentOtherTotal) * remaining);
+    });
+  } else {
+    others.forEach(id => document.getElementById(id).value = Math.floor(remaining / others.length));
+  }
+  ids.forEach((id,i) => document.getElementById(labels[i]).textContent = document.getElementById(id).value + '%');
+  const total = ids.reduce((s,id) => s + parseInt(document.getElementById(id).value), 0);
+  document.getElementById('pattern-weight-total').textContent = `Total: ${total}%`;
 }
 
 function adjustWeights(changed) {
@@ -384,20 +398,23 @@ async function generateNumbers() {
   btn.disabled = true;
 
   try {
-    if(currentMode === 'historical') {
-      const res = await fetch(`${API}/predict-historical`, {
+    if(currentMode === 'pattern') {
+      const res = await fetch(`${API}/predict-pattern`, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
-          birth_date: document.getElementById('birthdate').value,
-          draw_date: document.getElementById('drawdate').value,
           game: document.getElementById('game').value,
+          w_frequency: parseInt(document.getElementById('wp-freq').value)/100,
+          w_overdue: parseInt(document.getElementById('wp-overdue').value)/100,
+          w_trend: parseInt(document.getElementById('wp-trend').value)/100,
+          w_moon: parseInt(document.getElementById('wp-moon').value)/100,
+          w_pairs: parseInt(document.getElementById('wp-pairs').value)/100,
         })
       });
       const data = await res.json();
       if(!data.success) throw new Error('API error');
       lastResult = data.prediction;
-      displayHistoricalResults(lastResult);
+      displayPatternResults(lastResult);
     } else {
       const res = await fetch(`${API}/predict`, {
         method: 'POST',
@@ -422,7 +439,7 @@ async function generateNumbers() {
     alert('Could not connect to API. Make sure uvicorn is running!');
   }
 
-  btn.textContent = currentMode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : '📊 Generate Historical Numbers';
+  btn.textContent = currentMode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : '📊 Generate Pattern Numbers';
   btn.disabled = false;
 }
 
@@ -740,6 +757,7 @@ function bias_desc(bias) {
 }
 
 function displayResults(r) {
+  document.getElementById('result-title').textContent = '✦ YOUR COSMIC NUMBERS ✦';
   renderBalls(r.primary, r.bonus_primary, 'balls-primary', 'ball-purple');
   renderBalls(r.alt_a, r.bonus_alt_a, 'balls-alt-a', 'ball-teal');
   renderBalls(r.alt_b, r.bonus_alt_b, 'balls-alt-b', 'ball-amber');
@@ -779,6 +797,52 @@ function displayHistoricalResults(r) {
       <div style="background:var(--bg2);border-radius:8px;padding:12px;">
         <div style="font-size:11px;color:#5FD9AE;font-weight:600;margin-bottom:6px;">⏰ MOST OVERDUE</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px;">${r.most_overdue.map(n=>`<span style="background:rgba(29,158,117,0.2);color:#5FD9AE;padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;">${n}</span>`).join('')}</div>
+      </div>
+    </div>`;
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function displayPatternResults(r) {
+  const drawDate = new Date().toISOString().split('T')[0];
+  r.draw_date = drawDate;
+  r.moon = { phase: r.current_moon_phase || 'Unknown' };
+  r.sun_sign = null;
+  r.nakshatra = null;
+  r.life_path = 0;
+  r.bonus_primary = r.bonus_primary;
+
+  document.getElementById('result-title').textContent = '✦ YOUR PATTERN NUMBERS ✦';
+  document.getElementById('result-sub').textContent = `Draw: ${drawDate} · Pattern Analysis · ${r.total_draws} draws analyzed`;
+  renderBalls(r.primary, r.bonus_primary, 'balls-primary', 'ball-teal');
+  renderBalls(r.alt_a || [], r.bonus_alt_a, 'balls-alt-a', 'ball-teal');
+  renderBalls(r.alt_b || [], r.bonus_alt_b, 'balls-alt-b', 'ball-amber');
+
+  document.getElementById('r-moon').textContent = r.current_moon_phase || '—';
+  document.getElementById('r-sign').textContent = 'Statistical';
+  document.getElementById('r-nak').textContent = 'Pattern';
+  document.getElementById('r-lp').textContent = '—';
+
+  const top20 = r.top_20_by_confidence || [];
+  const hot = top20.slice(0, 7).map(x => x.number);
+  const sumCheck = r.sum_check || {};
+
+  document.getElementById('r-reading').innerHTML = `
+    <div style="margin-bottom:12px;">Numbers selected by the 10-system pattern engine. Sum: <strong>${sumCheck.primary_sum || '—'}</strong> ${sumCheck.in_optimal_range ? '<span style="color:#5FD9AE;">✓ optimal</span>' : '<span style="color:#F08E6A;">outside optimal range</span>'}. Moon phase today: <strong>${r.current_moon_phase || '—'}</strong>.</div>
+    <div class="grid3" style="margin-top:12px;">
+      <div style="background:var(--bg2);border-radius:8px;padding:12px;">
+        <div style="font-size:11px;color:#F08E6A;font-weight:600;margin-bottom:6px;">🔥 TOP CONFIDENCE</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${hot.map(n=>`<span style="background:rgba(216,90,48,0.2);color:#F08E6A;padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;">${n}</span>`).join('')}</div>
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;padding:12px;">
+        <div style="font-size:11px;color:#A99FF8;font-weight:600;margin-bottom:6px;">📊 RECOMMENDED MIX</div>
+        <div style="font-size:13px;color:var(--text2);">Odd/Even: <strong style="color:var(--text)">${(r.balance||{}).recommended_odd_even||'—'}</strong></div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px;">High/Low: <strong style="color:var(--text)">${(r.balance||{}).recommended_high_low||'—'}</strong></div>
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;padding:12px;">
+        <div style="font-size:11px;color:#5FD9AE;font-weight:600;margin-bottom:6px;">🎯 OPTIMAL SUM</div>
+        <div style="font-size:13px;color:var(--text2);">Range: <strong style="color:var(--text)">${(r.balance||{}).optimal_sum_range ? r.balance.optimal_sum_range.join('–') : '—'}</strong></div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px;">Draws: <strong style="color:var(--text)">${r.total_draws}</strong></div>
       </div>
     </div>`;
   document.getElementById('results').style.display = 'block';

@@ -94,6 +94,14 @@ class ValidateRequest(BaseModel):
     actual_numbers: str
     actual_bonus: Optional[int] = None
 
+class PatternPredictRequest(BaseModel):
+    game: Optional[str] = "powerball"
+    w_frequency: Optional[float] = 0.50
+    w_overdue: Optional[float] = 0.20
+    w_trend: Optional[float] = 0.15
+    w_moon: Optional[float] = 0.10
+    w_pairs: Optional[float] = 0.05
+
 # ============================================================
 # HELPERS
 # ============================================================
@@ -487,29 +495,18 @@ def pattern_analysis(req: PredictionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/predictions")
-def get_predictions():
+@app.post("/predict-pattern")
+def predict_pattern(req: PatternPredictRequest):
     try:
-        with engine.connect() as conn:
-            result = conn.execute(text("""
-                SELECT id, draw_date, game, primary_numbers,
-                bonus_number, moon_phase, sun_sign, matches, validated
-                FROM predictions
-                ORDER BY created_at DESC LIMIT 50
-            """))
-            rows = result.fetchall()
-        return {"success": True, "predictions": [
-            {
-                "id": r[0],
-                "draw_date": str(r[1]),
-                "game": r[2],
-                "numbers": r[3],
-                "bonus": r[4],
-                "moon_phase": r[5],
-                "sun_sign": r[6],
-                "matches": r[7],
-                "validated": r[8]
-            } for r in rows
-        ]}
+        from pattern_engine import pattern_predict
+        weights = {
+            'frequency': req.w_frequency,
+            'overdue': req.w_overdue,
+            'trend': req.w_trend,
+            'moon': req.w_moon,
+            'pairs': req.w_pairs,
+        }
+        result = pattern_predict(req.game or 'powerball', weights=weights)
+        return {"success": True, "prediction": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

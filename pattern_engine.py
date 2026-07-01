@@ -363,7 +363,11 @@ def cluster_analysis(draws, max_num=69):
 # MASTER PREDICTION FUNCTION
 # ============================================================
 
-def pattern_predict(game='powerball', confidence_weight=True):
+def pattern_predict(game='powerball', confidence_weight=True, weights=None):
+    """
+    weights: dict with keys frequency, overdue, trend, moon, pairs
+             each 0.0–1.0, will be normalized to sum to 1.0
+    """
     draws = load_draws(game)
     if not draws:
         return {'error': 'No historical data found'}
@@ -384,45 +388,59 @@ def pattern_predict(game='powerball', confidence_weight=True):
     consecutive = consecutive_analysis(draws)
     positional = positional_analysis(draws)
 
+    # Resolve weights — default matches original hardcoded breakdown
+    w = {'frequency': 0.50, 'overdue': 0.20, 'trend': 0.15, 'moon': 0.10, 'pairs': 0.05}
+    if weights:
+        raw = {k: max(0.0, float(weights.get(k, w[k]))) for k in w}
+        total_w = sum(raw.values()) or 1.0
+        w = {k: raw[k] / total_w for k in raw}
+
     # Build confidence scores for every number
     scores = {n: 0.0 for n in range(1, max_num + 1)}
 
-    # Frequency score (30%)
+    # Frequency score (frequency weight) — splits 60/40 between all-time and recent
     total_f = sum(freq['total'].values()) or 1
-    for n in range(1, max_num + 1):
-        scores[n] += (freq['total'].get(n, 0) / total_f) * 30
-
-    # Recent window bonus (20%) — last 50 draws
     recent_f = freq['windows'].get('50', {})
     recent_total = sum(recent_f.values()) or 1
     for n in range(1, max_num + 1):
-        scores[n] += (recent_f.get(n, 0) / recent_total) * 20
+        alltime = (freq['total'].get(n, 0) / total_f)
+        recent = (recent_f.get(n, 0) / recent_total)
+        scores[n] += (alltime * 0.6 + recent * 0.4) * w['frequency'] * 100
 
-    # Overdue bonus (20%) — numbers past their average gap
+    # Overdue bonus — numbers past their average gap
     max_overdue = max((gaps[n]['overdue_score'] for n in range(1, max_num+1)), default=1)
     for n in range(1, max_num + 1):
         if gaps[n]['overdue']:
-            scores[n] += (gaps[n]['overdue_score'] / max(max_overdue, 1)) * 20
+            scores[n] += (gaps[n]['overdue_score'] / max(max_overdue, 1)) * w['overdue'] * 100
 
-    # Markov bonus (15%) — likely to follow last draw
+    # Trend (Markov) bonus — likely to follow last draw
     markov_nums = markov.get('most_likely_next', [])
-    for i, n in enumerate(markov_nums):
-        scores[n] = scores.get(n, 0) + (15 - i * 0.5)
+    for i, n in enumerate(markov_nums[:20]):
+        scores[n] = scores.get(n, 0) + (w['trend'] * 100 * (1 - i / 20))
 
-    # Moon phase bonus (10%)
+    # Moon phase bonus
     from cosmic_engine import get_moon_phase
     from datetime import date
     current_phase = get_moon_phase(date.today())['phase']
     moon_top = moon.get(current_phase, {}).get('top_numbers', [])
-    for i, n in enumerate(moon_top):
+    for i, n in enumerate(moon_top[:15]):
         if n <= max_num:
-            scores[n] = scores.get(n, 0) + (10 - i * 0.8)
+            scores[n] = scores.get(n, 0) + (w['moon'] * 100 * (1 - i / 15))
 
-    # Cluster bonus (5%)
+    # Pairs/Cluster bonus
+    cluster_members = set()
     for cluster in clusters['clusters']:
         for n in cluster:
             if n <= max_num:
-                scores[n] = scores.get(n, 0) + 2
+                cluster_members.add(n)
+                scores[n] = scores.get(n, 0) + w['pairs'] * 40
+    top_pair_nums = set()
+    for entry in pairs.get('top_pairs', [])[:10]:
+        for n in entry['numbers']:
+            top_pair_nums.add(n)
+    for n in top_pair_nums:
+        if n <= max_num:
+            scores[n] = scores.get(n, 0) + w['pairs'] * 60
 
     # Normalize to 0-100
     max_score = max(scores.values()) or 1
