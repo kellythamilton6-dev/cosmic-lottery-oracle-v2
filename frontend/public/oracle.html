@@ -866,12 +866,12 @@ async function savePrediction() {
         'Authorization': `Bearer ${authToken}`
       },
       body: JSON.stringify({
-        birth_date: document.getElementById('birthdate').value,
+        birth_date: document.getElementById('birthdate').value || null,
         draw_date: lastResult.draw_date,
         game: lastResult.game,
         primary_numbers: lastResult.primary.join(','),
         bonus_number: lastResult.bonus_primary ?? null,
-        moon_phase: lastResult.moon ? lastResult.moon.phase : 'Historical',
+        moon_phase: lastResult.moon ? lastResult.moon.phase : 'Pattern',
         sun_sign: lastResult.sun_sign ? lastResult.sun_sign.sign : 'N/A',
         nakshatra: lastResult.nakshatra ? lastResult.nakshatra[0] : 'N/A',
         life_path: lastResult.life_path || 0

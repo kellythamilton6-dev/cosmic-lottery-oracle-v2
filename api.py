@@ -79,7 +79,7 @@ class PredictionRequest(BaseModel):
     w_num: Optional[float] = 0.20
 
 class SavePredictionRequest(BaseModel):
-    birth_date: str
+    birth_date: Optional[str] = None
     draw_date: str
     game: str
     primary_numbers: str
