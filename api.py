@@ -14,6 +14,7 @@ from cosmic_engine import (
 import os
 import httpx
 import jwt
+import base64
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -26,7 +27,8 @@ def get_user_id(authorization: Optional[str] = Header(None)) -> str:
     if not SUPABASE_JWT_SECRET:
         raise HTTPException(status_code=500, detail="Server auth not configured")
     try:
-        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
+        secret_bytes = base64.b64decode(SUPABASE_JWT_SECRET)
+        payload = jwt.decode(token, secret_bytes, algorithms=["HS256"], audience="authenticated")
         return payload["sub"]
     except jwt.PyJWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
