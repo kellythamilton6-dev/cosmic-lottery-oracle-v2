@@ -91,7 +91,7 @@
 <div class="header">
   <div class="stars">✦ ✦ ✦</div>
   <h1>COSMIC LOTTERY ORACLE</h1>
-  <p>Astrology · Vedic · Numerology · Moon Phases</p>
+  <p>Make your selection for Lottery prediction based on Cosmic or Historical influences</p>
 </div>
 
 <div class="moon-bar" id="moon-bar">
@@ -110,7 +110,18 @@
   <!-- GENERATE -->
   <div id="panel-generate" class="panel active">
 
-    <div class="card">
+    <div class="mode-bar">
+      <div>
+        <div style="font-size:14px;font-weight:500;margin-bottom:4px;">Prediction mode</div>
+        <div style="font-size:13px;color:var(--text2);">Choose how your numbers are generated</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="mode-cosmic" class="btn btn-primary" style="font-size:13px;padding:8px 18px;" onclick="setMode('cosmic')">🔮 Cosmic</button>
+        <button id="mode-pattern" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('pattern')">📊 Historical Trends</button>
+      </div>
+    </div>
+
+    <div id="cosmic-profile" class="card">
       <h2>Your cosmic profile</h2>
       <p class="sub">Enter your details to generate personalized predictions</p>
       <div class="grid3" style="margin-bottom:12px;">
@@ -128,14 +139,15 @@
       </div>
     </div>
 
-    <div class="mode-bar">
-      <div>
-        <div style="font-size:14px;font-weight:500;margin-bottom:4px;">Prediction mode</div>
-        <div style="font-size:13px;color:var(--text2);">Choose how your numbers are generated</div>
-      </div>
-      <div style="display:flex;gap:8px;">
-        <button id="mode-cosmic" class="btn btn-primary" style="font-size:13px;padding:8px 18px;" onclick="setMode('cosmic')">🔮 Cosmic</button>
-        <button id="mode-pattern" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('pattern')">📊 Historical Trends</button>
+    <div id="pattern-game" style="display:none;" class="card">
+      <h2>Lottery game</h2>
+      <p class="sub">Select which game to analyze historical patterns for</p>
+      <div style="max-width:260px;">
+        <label>Lottery game</label>
+        <select id="game-pattern">
+          <option value="powerball">Powerball</option>
+          <option value="megamillions">Mega Millions</option>
+        </select>
       </div>
     </div>
 
@@ -319,12 +331,14 @@ async function loadPredictions() {
 
 function setMode(mode) {
   currentMode = mode;
+  document.getElementById('cosmic-profile').style.display = mode === 'cosmic' ? 'block' : 'none';
+  document.getElementById('pattern-game').style.display = mode === 'pattern' ? 'block' : 'none';
   document.getElementById('cosmic-weights').style.display = mode === 'cosmic' ? 'block' : 'none';
   document.getElementById('pattern-weights').style.display = mode === 'pattern' ? 'block' : 'none';
   document.getElementById('mode-cosmic').className = mode === 'cosmic' ? 'btn btn-primary' : 'btn btn-secondary';
   document.getElementById('mode-pattern').className = mode === 'pattern' ? 'btn btn-primary' : 'btn btn-secondary';
   const btn = document.getElementById('gen-btn');
-  btn.textContent = mode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : '📊 Generate Pattern Numbers';
+  btn.textContent = mode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : '📊 Generate Historical Numbers';
   btn.style.background = mode === 'pattern' ? 'var(--teal)' : 'var(--purple)';
   btn.style.borderColor = mode === 'pattern' ? 'var(--teal)' : 'var(--purple)';
   document.getElementById('results').style.display = 'none';
@@ -403,7 +417,7 @@ async function generateNumbers() {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
-          game: document.getElementById('game').value,
+          game: document.getElementById('game-pattern').value,
           w_frequency: parseInt(document.getElementById('wp-freq').value)/100,
           w_overdue: parseInt(document.getElementById('wp-overdue').value)/100,
           w_trend: parseInt(document.getElementById('wp-trend').value)/100,
