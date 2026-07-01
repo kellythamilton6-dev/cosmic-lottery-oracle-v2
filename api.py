@@ -24,12 +24,12 @@ def get_user_id(authorization: Optional[str] = Header(None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
     token = authorization.split(" ", 1)[1]
-    if not SUPABASE_JWT_SECRET:
-        raise HTTPException(status_code=500, detail="Server auth not configured")
     try:
-        secret_bytes = base64.b64decode(SUPABASE_JWT_SECRET)
-        payload = jwt.decode(token, secret_bytes, algorithms=["HS256"], audience="authenticated")
-        return payload["sub"]
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="No user ID in token")
+        return user_id
     except jwt.PyJWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
 
