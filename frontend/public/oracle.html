@@ -837,7 +837,7 @@ function displayResults(r) {
   renderBalls(r.alt_a, r.bonus_alt_a, 'balls-alt-a', 'ball-teal');
   renderBalls(r.alt_b, r.bonus_alt_b, 'balls-alt-b', 'ball-amber');
   document.getElementById('r-lp').textContent = r.life_path;
-  document.getElementById('r-moon').textContent = (r.moon.icon||'')+ ' '+r.moon.phase.split(' ')[0];
+  document.getElementById('r-moon').textContent = (r.moon.icon||'')+ ' '+r.moon.phase;
   document.getElementById('r-sign').textContent = r.sun_sign.sign;
   document.getElementById('r-nak').textContent = r.nakshatra[0];
   document.getElementById('result-sub').textContent = `Draw: ${r.draw_date} · ${r.sun_sign.sign} · ${r.moon.icon} ${r.moon.phase} · ${r.game}`;
