@@ -424,12 +424,21 @@ function adjustWeights(changed) {
   const remaining = 100 - changedVal;
   const currentOtherTotal = others.reduce((s,id) => s + parseInt(document.getElementById(id).value), 0);
   if(currentOtherTotal > 0) {
-    others.forEach(id => {
+    let assigned = 0;
+    others.forEach((id, i) => {
       const currentVal = parseInt(document.getElementById(id).value);
-      document.getElementById(id).value = Math.round((currentVal / currentOtherTotal) * remaining);
+      const val = i === others.length - 1
+        ? remaining - assigned
+        : Math.round((currentVal / currentOtherTotal) * remaining);
+      document.getElementById(id).value = val;
+      assigned += val;
     });
   } else {
-    others.forEach(id => document.getElementById(id).value = Math.floor(remaining / others.length));
+    const share = Math.floor(remaining / others.length);
+    const leftover = remaining - share * others.length;
+    others.forEach((id, i) => {
+      document.getElementById(id).value = share + (i === 0 ? leftover : 0);
+    });
   }
   ids.forEach((id,i) => document.getElementById(labels[i]).textContent = document.getElementById(id).value + '%');
   const total = ids.reduce((s,id) => s + parseInt(document.getElementById(id).value), 0);
