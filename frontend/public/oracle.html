@@ -655,17 +655,40 @@ function moonTierFit(bias, n, max) {
 function moonSpecificReason(bias, n, phase, max) {
   const tier = numberTier(n, max);
   const pct = Math.round((n/max)*100);
+  const ds = digitSum(n);
+  const mid = Math.floor(max/2);
+  const distFromMid = Math.abs(n - mid);
+
+  // Build a unique trait string for this specific number
+  function numTrait() {
+    if(isPrime(n) && isFibonacci(n)) return `${n} is both prime and Fibonacci — a rare double resonance that amplifies lunar sensitivity`;
+    if(isPrime(n) && isTriangular(n)) return `${n} is both prime and triangular — an unusual pairing that concentrates lunar energy at a single point`;
+    if(isFibonacci(n)) return `${n} follows the Fibonacci sequence — its natural growth ratio mirrors the moon's own cyclic expansion`;
+    if(isTriangular(n)) return `${n} is a triangular number — its stacked structure forms a natural receptacle for lunar influence`;
+    if(isPerfectSquare(n)) return `${n} is a perfect square (${Math.round(Math.sqrt(n))}²) — its symmetry creates a stable anchor for lunar energy`;
+    if(isPrime(n)) return `${n} is prime — indivisible and self-contained, it draws lunar energy without dilution`;
+    if(ds === 7) return `${n}'s digits sum to 7 — the number of sacred completion, making it a natural conductor for ${phase} energy`;
+    if(ds === 9) return `${n}'s digits sum to 9 — the number of universal cycles, resonating deeply with the moon's own periodic nature`;
+    if(ds === 11 || ds === 22) return `${n}'s digits sum to ${ds} — a master number in numerology that heightens lunar receptivity`;
+    if(n % 7 === 0) return `${n} is divisible by 7 — the lunar number of ancient traditions, creating a direct harmonic with the ${phase}`;
+    if(n === mid) return `${n} sits exactly at the midpoint of the number field — perfectly balanced between extremes, it mirrors the ${phase}'s own equilibrium`;
+    if(distFromMid <= 3) return `${n} hovers within 3 of the field's midpoint (${mid}) — its near-center position reflects the ${phase}'s balanced, integrative pull`;
+    if(n % 2 === 0 && ds % 2 === 0) return `${n} is even with an even digit sum (${ds}) — a double-even resonance that aligns with the ${phase}'s reflective, receptive quality`;
+    return `${n} carries a digit sum of ${ds} — under the ${phase}, numbers whose digits reduce to ${ds%9||9} draw from the ${ds<=5?'waxing':'waning'} harmonic of the lunar cycle`;
+  }
+
   if(bias==='high')
-    return `${n} sits in the upper ${100-pct}% of the number field — the ${phase} amplifies peak-energy numbers above ${Math.floor(max*0.65)}, and ${n} draws that elevated lunar charge directly.`;
+    return `${n} sits in the upper range of the number field. ${numTrait()}. The ${phase} amplifies peak-energy numbers above ${Math.floor(max*0.65)}, and ${n} draws that elevated charge directly.`;
   if(bias==='low')
-    return `${n} anchors in the lower range (bottom ${pct}% of the field) — the ${phase} favors seed-energy numbers close to 1, and ${n} holds that grounding potential.`;
+    return `${n} anchors in the lower range — the ${phase} favors seed-energy numbers close to 1. ${numTrait()}, strengthening its pull from this grounded position.`;
   if(bias==='midhigh')
-    return `${n} occupies the mid-to-high band — the ${phase} builds momentum in numbers above the midpoint (${Math.floor(max/2)}), and ${n} at position ${pct}% of the field carries that forward energy.`;
+    return `${n} occupies the mid-to-high band. ${numTrait()}. The ${phase} builds momentum above the midpoint (${mid}), and ${n} carries that forward energy.`;
   if(bias==='odd')
-    return `${n} is ${n%2!==0?'odd — carrying the active, forward-moving energy the':'even — unusual for this phase; it earned its place because the other'} ${phase} favors. Odd numbers represent motion and initiation under this lunar state.`;
+    return `${n} is ${n%2!==0?'odd':'even — unusual for this phase but present because'}. ${numTrait()}. The ${phase} favors active, forward-moving numbers, and ${n} qualifies through this numerical signature.`;
   if(bias==='even')
-    return `${n} is ${n%2===0?'even — resonating with the completion and release energy the':'odd — it entered despite the'} ${phase} favors. Even numbers reflect balance and letting-go under this lunar state.`;
-  return `${n} aligns with the ${phase} energy field — its position at ${pct}% of the number range matches the balanced lunar draw pattern of this phase.`;
+    return `${n} is ${n%2===0?'even':'odd — selected despite this phase'}. ${numTrait()}. The ${phase} favors completion and release energy, which ${n} reflects through this property.`;
+  // balanced / fallback
+  return `${numTrait()}. Under the ${phase}, this property creates a direct harmonic — not every number carries this signature, which is why ${n} was selected over others in the field.`;
 }
 
 function astroSpecificReason(n, sign, planet, signLucky) {
