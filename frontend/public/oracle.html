@@ -655,42 +655,60 @@ function moonTierFit(bias, n, max) {
   return fits[bias] || false;
 }
 function moonSpecificReason(bias, n, phase, max) {
-  const tier = numberTier(n, max);
   const pct = Math.round((n/max)*100);
   const ds = digitSum(n);
   const mid = Math.floor(max/2);
   const distFromMid = Math.abs(n - mid);
 
-  // Build a unique trait string for this specific number
-  function numTrait() {
-    if(isPrime(n) && isFibonacci(n)) return `${n} is both prime and Fibonacci — a rare double resonance that amplifies lunar sensitivity`;
-    if(isPrime(n) && isTriangular(n)) return `${n} is both prime and triangular — an unusual pairing that concentrates lunar energy at a single point`;
-    if(isFibonacci(n)) return `${n} follows the Fibonacci sequence — its natural growth ratio mirrors the moon's own cyclic expansion`;
-    if(isTriangular(n)) return `${n} is a triangular number — its stacked structure forms a natural receptacle for lunar influence`;
-    if(isPerfectSquare(n)) return `${n} is a perfect square (${Math.round(Math.sqrt(n))}²) — its symmetry creates a stable anchor for lunar energy`;
-    if(isPrime(n)) return `${n} is prime — indivisible and self-contained, it draws lunar energy without dilution`;
-    if(ds === 7) return `${n}'s digits sum to 7 — the number of sacred completion, making it a natural conductor for ${phase} energy`;
-    if(ds === 9) return `${n}'s digits sum to 9 — the number of universal cycles, resonating deeply with the moon's own periodic nature`;
-    if(ds === 11 || ds === 22) return `${n}'s digits sum to ${ds} — a master number in numerology that heightens lunar receptivity`;
-    if(n % 7 === 0) return `${n} is divisible by 7 — the lunar number of ancient traditions, creating a direct harmonic with the ${phase}`;
-    if(n === mid) return `${n} sits exactly at the midpoint of the number field — perfectly balanced between extremes, it mirrors the ${phase}'s own equilibrium`;
-    if(distFromMid <= 3) return `${n} hovers within 3 of the field's midpoint (${mid}) — its near-center position reflects the ${phase}'s balanced, integrative pull`;
-    if(n % 2 === 0 && ds % 2 === 0) return `${n} is even with an even digit sum (${ds}) — a double-even resonance that aligns with the ${phase}'s reflective, receptive quality`;
-    return `${n} carries a digit sum of ${ds} — under the ${phase}, numbers whose digits reduce to ${ds%9||9} draw from the ${ds<=5?'waxing':'waning'} harmonic of the lunar cycle`;
+  // Returns a complete, self-contained sentence unique to this number's property
+  function fullReason() {
+    if(isPrime(n) && isFibonacci(n))
+      return `${n} is both prime and Fibonacci — two properties rarely found in the same number. Primes resist division while Fibonacci numbers grow by addition; under the ${phase}, that tension between containment and expansion makes ${n} unusually responsive to lunar pull.`;
+    if(isPrime(n) && isTriangular(n))
+      return `${n} is prime and triangular — it can only be divided by itself, yet its value is the sum of all integers from 1 to ${Math.round((-1+Math.sqrt(1+8*n))/2)}. The ${phase} draws on numbers that hold both singularity and accumulation, which is precisely what ${n} does.`;
+    if(isFibonacci(n))
+      return `${n} is a Fibonacci number, meaning it emerges from the sum of the two before it in the sequence. That recursive growth pattern mirrors the moon's own cycle of building on what came before — the ${phase} amplifies numbers that carry this accumulative signature.`;
+    if(isTriangular(n))
+      return `${n} is triangular — it equals 1+2+3+…+${Math.round((-1+Math.sqrt(1+8*n))/2)}, the sum of a natural staircase. Triangular numbers represent completeness-through-accumulation, a quality the ${phase} favors as it ${phase.includes('Waning')||phase.includes('Last')?'releases what has been gathered':'builds toward fullness'}.`;
+    if(isPerfectSquare(n))
+      return `${n} is a perfect square (${Math.round(Math.sqrt(n))} × ${Math.round(Math.sqrt(n))}), meaning its energy folds back on itself symmetrically. The ${phase} responds to self-referential numbers — ${n}'s internal balance creates stability in an otherwise shifting lunar field.`;
+    if(isPrime(n))
+      return `${n} is prime, divisible by nothing but 1 and itself. In a field of composite numbers that share factors and diffuse their energy, ${n} concentrates its entire frequency in one place — the ${phase} draws on that undiluted signal.`;
+    if(ds === 7)
+      return `${n}'s digits reduce to 7 (${String(n).split('').join('+')} = ${ds}). Seven is the number of sacred cycles — seven days of the week, seven classical planets, seven notes in the musical scale. Under the ${phase}, numbers that carry 7 vibrate at the same frequency as the lunar calendar itself.`;
+    if(ds === 9)
+      return `${n}'s digits reduce to 9 (${String(n).split('').join('+')} = ${ds}). Nine is the number of completion — the last single digit before the cycle resets. The ${phase} resonates with 9-energy because it too marks a culmination point in the lunar rhythm.`;
+    if(ds === 1)
+      return `${n}'s digits reduce to 1 (${String(n).split('').join('+')} = ${ds}). One is the number of beginnings and singular focus. Despite ${n} sitting higher in the field, its inner essence is pure initiation — the ${phase} channels that originating force into the draw.`;
+    if(ds === 11 || ds === 22)
+      return `${n}'s digits sum to ${ds} — one of numerology's master numbers, which are never reduced further. Master numbers hold amplified frequency; under the ${phase}, ${n} acts as a magnifier, pulling lunar energy toward itself more strongly than its neighbors.`;
+    if(n % 7 === 0)
+      return `${n} is ${n/7} × 7 — a direct multiple of 7, the traditional lunar number in ancient Babylonian, Hindu and Hebrew traditions. Each multiple of 7 carries a harmonic of that lunar root; at ${n}, that harmonic lands at the ${pct}th percentile of the field, right within the ${phase}'s active zone.`;
+    if(n === mid)
+      return `${n} sits at the exact midpoint of the number field. The ${phase} is itself a point of equilibrium in the lunar cycle, and ${n} mirrors that balance structurally — neither high nor low, it draws from both ends of the field simultaneously.`;
+    if(distFromMid <= 3)
+      return `${n} sits within ${distFromMid} of the field's midpoint (${mid}), placing it in the zone of maximum balance. The ${phase} favors numbers that don't lean too far in either direction — ${n}'s near-center position means it collects energy from both the lower and upper halves of the field.`;
+    if(n % 2 === 0 && ds % 2 === 0)
+      return `${n} is even and its digit sum (${ds}) is also even — a double-even signature. Even numbers in lunar tradition carry receptive, reflective energy; when both the number and its digit sum share that quality, the ${phase}'s pull is doubled rather than split.`;
+    if(n % 2 !== 0 && ds % 2 !== 0)
+      return `${n} is odd and its digit sum (${ds}) is also odd — a double-odd signature that carries active, outward-moving energy at two levels simultaneously. The ${phase} selects ${n} because its odd nature persists even after numerical reduction, making it consistent rather than contradictory.`;
+    const harmonic = ds % 3 === 0 ? 'a 3-cycle harmonic (creative, expressive)' : ds % 2 === 0 ? 'an even-reduction harmonic (receptive, reflective)' : 'an odd-reduction harmonic (active, initiating)';
+    return `${n}'s digits reduce to ${ds}, giving it ${harmonic}. Under the ${phase}, numbers are selected not just by position but by the frequency hidden in their digit structure — ${n}'s inner signature matched the lunar field's requirements for this draw.`;
   }
 
+  // Combine the property reason with the bias context
+  const base = fullReason();
   if(bias==='high')
-    return `${n} sits in the upper range of the number field. ${numTrait()}. The ${phase} amplifies peak-energy numbers above ${Math.floor(max*0.65)}, and ${n} draws that elevated charge directly.`;
+    return `${base} The ${phase} additionally favors numbers in the upper range, reinforcing ${n}'s selection.`;
   if(bias==='low')
-    return `${n} anchors in the lower range — the ${phase} favors seed-energy numbers close to 1. ${numTrait()}, strengthening its pull from this grounded position.`;
+    return `${base} The ${phase} additionally draws from the lower end of the field, where ${n} anchors itself.`;
   if(bias==='midhigh')
-    return `${n} occupies the mid-to-high band. ${numTrait()}. The ${phase} builds momentum above the midpoint (${mid}), and ${n} carries that forward energy.`;
+    return `${base} The ${phase}'s momentum bias toward the mid-to-high band further strengthens ${n}'s position.`;
   if(bias==='odd')
-    return `${n} is ${n%2!==0?'odd':'even — unusual for this phase but present because'}. ${numTrait()}. The ${phase} favors active, forward-moving numbers, and ${n} qualifies through this numerical signature.`;
+    return `${base} The ${phase}'s preference for odd-numbered, active energy ${n%2!==0?'aligns directly with':'was overridden here by'} this property.`;
   if(bias==='even')
-    return `${n} is ${n%2===0?'even':'odd — selected despite this phase'}. ${numTrait()}. The ${phase} favors completion and release energy, which ${n} reflects through this property.`;
-  // balanced / fallback
-  return `${numTrait()}. Under the ${phase}, this property creates a direct harmonic — not every number carries this signature, which is why ${n} was selected over others in the field.`;
+    return `${base} The ${phase}'s preference for even-numbered, completion energy ${n%2===0?'reinforces':'was overridden here by'} this signature.`;
+  return base;
 }
 
 function astroSpecificReason(n, sign, planet, signLucky) {
