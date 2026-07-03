@@ -1099,12 +1099,17 @@ function loadHistory(game) {
   fetch(`${API}/history/${game}`)
     .then(r=>r.json())
     .then(hist=>{
-      document.getElementById('hist-list').innerHTML = hist.draws.map(d=>`
+      const draws = hist.draws || hist.results || [];
+      if (!draws.length) {
+        document.getElementById('hist-list').innerHTML='<div class="alert alert-error">No drawings found for this game yet.</div>';
+        return;
+      }
+      document.getElementById('hist-list').innerHTML = draws.map(d=>`
         <div class="hist-row">
           <div class="hist-date">${d.date}</div>
-          <div class="balls-row">${d.numbers.map(n=>`<span class="ball ball-purple" style="width:34px;height:34px;font-size:13px;">${n}</span>`).join('')}<span style="color:var(--text2);">+</span><span class="ball ball-coral" style="width:34px;height:34px;font-size:13px;">${d.bonus}</span></div>
+          <div class="balls-row">${(d.numbers||[]).map(n=>`<span class="ball ball-purple" style="width:34px;height:34px;font-size:13px;">${n}</span>`).join('')}<span style="color:var(--text2);">+</span><span class="ball ball-coral" style="width:34px;height:34px;font-size:13px;">${d.bonus}</span></div>
         </div>`).join('');
-    }).catch(()=>{ document.getElementById('hist-list').innerHTML='<div class="alert alert-error">Could not load — make sure API is running</div>'; });
+    }).catch(e=>{ document.getElementById('hist-list').innerHTML=`<div class="alert alert-error">Could not load drawings: ${e.message}</div>`; });
   fetch(`${API}/frequency/${game}`)
     .then(r=>r.json())
     .then(freq=>{
