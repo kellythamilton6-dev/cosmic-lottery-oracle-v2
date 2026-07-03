@@ -197,8 +197,10 @@
         <div class="balls-row" id="balls-primary"></div>
         <div class="section-label" style="margin-top:12px;">Alternative A</div>
         <div class="balls-row" id="balls-alt-a"></div>
+        <div id="alt-a-summary" style="margin-top:8px;display:none;"></div>
         <div class="section-label" style="margin-top:12px;">Alternative B</div>
         <div class="balls-row" id="balls-alt-b"></div>
+        <div id="alt-b-summary" style="margin-top:8px;display:none;"></div>
         <hr style="border:none;border-top:1px solid var(--border);margin:16px 0;">
         <div class="grid4">
           <div class="metric"><div class="metric-label">Life path / Draws</div><div class="metric-value" id="r-lp">—</div></div>
@@ -849,6 +851,106 @@ function explainNumbers(result) {
   return html;
 }
 
+function altSetCharacter(numbers, primary, maxNum) {
+  const avg = numbers.reduce((a,b)=>a+b,0) / numbers.length;
+  const primaryAvg = primary.reduce((a,b)=>a+b,0) / primary.length;
+  const primes = numbers.filter(isPrime);
+  const fibs = numbers.filter(isFibonacci);
+  const oddCount = numbers.filter(n=>n%2!==0).length;
+  const highCount = numbers.filter(n=>n > maxNum*0.6).length;
+  const lowCount = numbers.filter(n=>n < maxNum*0.35).length;
+
+  const traits = [];
+  if(avg > primaryAvg + 5) traits.push('skews toward higher numbers than the primary set');
+  else if(avg < primaryAvg - 5) traits.push('draws from the lower end of the number field');
+  else traits.push('stays in a similar range to the primary set with different number selections');
+
+  if(primes.length >= 3) traits.push(`heavy prime concentration (${primes.join(', ')} are all prime)`);
+  else if(primes.length === 0) traits.push('no primes — composite numbers dominate');
+  if(fibs.length >= 2) traits.push(`${fibs.length} Fibonacci numbers (${fibs.join(', ')})`);
+  if(oddCount >= 4) traits.push('odd-number dominant (active, forward-moving energy)');
+  else if(oddCount <= 1) traits.push('even-number dominant (completion and release energy)');
+  if(highCount >= 3) traits.push('concentrates energy in the upper field');
+  if(lowCount >= 3) traits.push('anchors in the foundational lower range');
+
+  return traits;
+}
+
+function explainAltSet(numbers, bonus, result, label, color, containerId) {
+  if(!numbers || !numbers.length || !result.sun_sign) return;
+  const maxNum = result.game === 'megamillions' ? 70 : 69;
+  const traits = altSetCharacter(numbers, result.primary, maxNum);
+
+  const moonPhase = result.moon.phase;
+  const sign = result.sun_sign.sign;
+  const nakshatra = result.nakshatra[0];
+  const nakshatraRuler = result.nakshatra[1];
+  const nakshatraNumbers = result.nakshatra[2] || [];
+  const lifePath = result.life_path;
+  const planet = result.sun_sign.planet;
+  const signLucky = result.sun_sign.lucky || [];
+  const bias = result.moon.bias;
+
+  const vedicNums = new Set();
+  nakshatraNumbers.forEach(n => { for(let m=1;m*n<=maxNum;m++) vedicNums.add(n*m); });
+  (PLANET_NUMS[nakshatraRuler]||[]).forEach(n => vedicNums.add(n));
+
+  // Pick 2 standout numbers for the summary
+  const standouts = numbers.slice(0,2).map(num => {
+    const props = numberProperties(num);
+    if(props.length) return `<strong>${num}</strong> (${props[0]})`;
+    const ds = digitSum(num);
+    return `<strong>${num}</strong> (digit sum ${ds})`;
+  });
+
+  const uid = label.replace(/\s/g,'').toLowerCase();
+
+  // Build full per-number detail (collapsed by default)
+  let detail = '';
+  numbers.forEach(num => {
+    const reasons = [];
+    const tags = [];
+    const isMoon = moonTierFit(bias, num, maxNum);
+    const isAstro = signLucky.some(l=>num%l===0||num===l)||(PLANET_NUMS[planet]||[]).includes(num)||(PLANET_NUMS[planet]||[]).includes(digitSum(num));
+    const isVedic = vedicNums.has(num)||(PLANET_NUMS[nakshatraRuler]||[]).includes(digitSum(num));
+    const isNum = num===lifePath||num%lifePath===0||digitSum(num)===lifePath||(num+lifePath)%9===0;
+    if(isMoon){ reasons.push(`<span style="color:#A99FF8;">🌒 Moon — ${moonPhase}:</span> ${moonSpecificReason(bias, num, moonPhase, maxNum)}`); tags.push('<span class="badge badge-moon">Moon</span>'); }
+    if(isAstro){ reasons.push(`<span style="color:#F0B84A;">☀ ${sign} / ${planet}:</span> ${astroSpecificReason(num, sign, planet, signLucky)}`); tags.push('<span class="badge badge-astro">Astrology</span>'); }
+    if(isVedic){ reasons.push(`<span style="color:#5FD9AE;">☽ ${nakshatra} nakshatra:</span> ${vedicSpecificReason(num, nakshatra, nakshatraRuler, nakshatraNumbers)}`); tags.push('<span class="badge badge-vedic">Vedic</span>'); }
+    if(isNum){ reasons.push(`<span style="color:#F08E6A;">◆ Life Path ${lifePath}:</span> ${numerologySpecificReason(num, lifePath)}`); tags.push('<span class="badge badge-num">Numerology</span>'); }
+    if(reasons.length===0){ const ds=digitSum(num); reasons.push(`<span style="color:#5FD9AE;">☽ ${nakshatra} nakshatra:</span> ${num} (digit sum ${ds}) emerges from the weighted probability field under ${nakshatra}. Its digit resonance of ${ds} aligns with ${nakshatraRuler}'s broader influence.`); tags.push('<span class="badge badge-vedic">Vedic</span>'); }
+    const props = numberProperties(num);
+    const propNote = props.length ? `<div style="margin-top:8px;font-size:11px;color:var(--text2);border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;">✦ <em>${num} is ${props.join(' · ')}</em></div>` : '';
+    detail += `<div style="background:var(--bg3);border-radius:10px;padding:14px 16px;margin-bottom:10px;border-left:3px solid ${color};">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span class="ball" style="width:36px;height:36px;font-size:14px;flex-shrink:0;background:${color};color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;">${num}</span>
+        <div>${tags.join('')}</div>
+      </div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.7;">${reasons.join('<br><br>')}</div>
+      ${propNote}
+    </div>`;
+  });
+
+  const html = `
+    <div style="background:var(--bg2);border-radius:10px;padding:12px 14px;border-left:3px solid ${color};margin-bottom:4px;">
+      <div style="font-size:12px;color:var(--text2);line-height:1.6;">
+        This set <strong style="color:var(--text)">${traits[0]}</strong>${traits.length>1 ? ` — ${traits.slice(1).join('; ')}` : ''}.
+        Standout numbers: ${standouts.join(' and ')}.
+      </div>
+      <button onclick="document.getElementById('${uid}-detail').style.display=document.getElementById('${uid}-detail').style.display==='none'?'block':'none';this.textContent=this.textContent.includes('Show')?'Hide number explanations ▲':'Show number explanations ▼';"
+        style="margin-top:10px;background:none;border:1px solid var(--border);color:var(--text2);font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;">
+        Show number explanations ▼
+      </button>
+    </div>
+    <div id="${uid}-detail" style="display:none;margin-top:6px;">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;padding-left:2px;">✦ Number meanings &amp; cosmic explanations — ${label}</div>
+      ${detail}
+    </div>`;
+
+  const el = document.getElementById(containerId);
+  if(el){ el.innerHTML = html; el.style.display = 'block'; }
+}
+
 function bias_desc(bias) {
   const d = {'low':'grounding foundational','high':'peak high-energy','odd':'odd action-forward','even':'even completion','asc':'ascending growth','midhigh':'mid-to-high momentum','balanced':'balanced'};
   return d[bias]||'balanced';
@@ -868,6 +970,8 @@ function displayResults(r) {
     .replace('{moon}',r.moon.phase).replace('{sign}',r.sun_sign.sign)
     .replace('{lp}',r.life_path).replace('{nak}',r.nakshatra[0]);
   document.getElementById('r-reading').innerHTML = reading + explainNumbers(r);
+  explainAltSet(r.alt_a, r.bonus_alt_a, r, 'Alternative A', '#5FD9AE', 'alt-a-summary');
+  explainAltSet(r.alt_b, r.bonus_alt_b, r, 'Alternative B', '#F0B84A', 'alt-b-summary');
   document.getElementById('results').style.display = 'block';
   document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
