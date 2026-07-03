@@ -221,8 +221,8 @@
       <h2>Recent draw history</h2>
       <p class="sub">Latest results from your database</p>
       <div style="display:flex;gap:10px;margin-bottom:16px;">
-        <button class="btn btn-primary" style="font-size:13px;padding:7px 16px;" onclick="loadHistory('powerball')">Powerball</button>
-        <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="loadHistory('megamillions')">Mega Millions</button>
+        <button id="hist-btn-powerball" class="btn btn-primary" style="font-size:13px;padding:7px 16px;" onclick="loadHistory('powerball')">Powerball</button>
+        <button id="hist-btn-megamillions" class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="loadHistory('megamillions')">Mega Millions</button>
       </div>
       <div id="hist-list"><div style="color:var(--text2);font-size:14px;">Click a game above to load history</div></div>
     </div>
@@ -1095,6 +1095,8 @@ async function validatePrediction() {
 // ============================================================
 
 function loadHistory(game) {
+  document.getElementById('hist-btn-powerball').className = 'btn ' + (game === 'powerball' ? 'btn-primary' : 'btn-secondary');
+  document.getElementById('hist-btn-megamillions').className = 'btn ' + (game === 'megamillions' ? 'btn-primary' : 'btn-secondary');
   document.getElementById('hist-list').innerHTML = '<div style="color:var(--text2);">Loading...</div>';
   fetch(`${API}/history/${game}`)
     .then(r=>r.json())
