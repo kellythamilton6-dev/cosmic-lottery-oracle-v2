@@ -15,8 +15,13 @@ import os
 import httpx
 import jwt
 import base64
+import time
+import logging
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("sync")
 
 SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
 
@@ -40,19 +45,35 @@ DB_URL = (
 )
 engine = create_engine(DB_URL)
 
+# In-memory record of the most recent sync attempt (scheduled or manual),
+# so sync health can be checked via /sync-status instead of only Railway logs.
+_last_sync = {"ran_at": None, "success": None, "powerball_inserted": None, "megamillions_inserted": None, "error": None}
+
 def scheduled_sync():
+    global _last_sync
+    started = datetime.utcnow().isoformat()
     try:
         with engine.connect() as conn:
-            sync_game('powerball', conn)
-            sync_game('megamillions', conn)
+            pb = sync_game('powerball', conn)
+            mm = sync_game('megamillions', conn)
             conn.commit()
-    except Exception:
-        pass
+        _last_sync = {"ran_at": started, "success": True, "powerball_inserted": pb, "megamillions_inserted": mm, "error": None}
+        logger.info(f"sync OK: powerball +{pb}, megamillions +{mm}")
+    except Exception as e:
+        _last_sync = {"ran_at": started, "success": False, "powerball_inserted": None, "megamillions_inserted": None, "error": str(e)}
+        logger.error(f"sync FAILED: {e}")
 
 @asynccontextmanager
 async def lifespan(app):
     scheduler = BackgroundScheduler()
-    scheduler.add_job(scheduled_sync, 'cron', hour=9, minute=0)
+    # Catch up immediately on every startup/deploy (Railway restarts the
+    # process often during active development, which used to mean losing
+    # the in-process schedule until the next 9am UTC trigger).
+    scheduler.add_job(scheduled_sync, id="startup_sync")
+    # Then re-check every 3 hours instead of once a day, so a single missed
+    # or failed run (network hiccup, NY Open Data throttling) self-heals
+    # within hours instead of silently drifting for days.
+    scheduler.add_job(scheduled_sync, 'interval', hours=3, id="periodic_sync")
     scheduler.start()
     yield
     scheduler.shutdown()
@@ -135,18 +156,36 @@ def get_game_config(game):
 # ROUTES
 # ============================================================
 
-def sync_game(game: str, conn):
+def sync_game(game: str, conn, limit: int = 40):
+    # limit=40 (not just the last handful) so a sync that was missed for a
+    # few days still fully catches up in one pass -- the per-row existence
+    # check below makes this idempotent, and the unique constraint on
+    # draw_date is a hard backstop against duplicates either way.
     if game == 'powerball':
-        url = "https://data.ny.gov/resource/d6yy-54nr.json?$order=draw_date+DESC&$limit=10"
+        url = f"https://data.ny.gov/resource/d6yy-54nr.json?$order=draw_date+DESC&$limit={limit}"
         table = 'powerball_draws'
         bonus_col = 'powerball'
     else:
-        url = "https://data.ny.gov/resource/5xaw-6ayf.json?$order=draw_date+DESC&$limit=10"
+        url = f"https://data.ny.gov/resource/5xaw-6ayf.json?$order=draw_date+DESC&$limit={limit}"
         table = 'megamillions_draws'
         bonus_col = 'megaball'
 
-    with httpx.Client(timeout=10) as client:
-        data = client.get(url).json()
+    data = None
+    last_err = None
+    for attempt in range(3):
+        try:
+            with httpx.Client(timeout=15) as client:
+                resp = client.get(url, headers={"User-Agent": "cosmic-lottery-oracle/1.0"})
+                resp.raise_for_status()
+                data = resp.json()
+            break
+        except Exception as e:
+            last_err = e
+            logger.warning(f"{game} sync attempt {attempt + 1}/3 failed: {e}")
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+    if data is None:
+        raise RuntimeError(f"NY Open Data fetch failed for {game} after 3 attempts: {last_err}")
 
     inserted = 0
     for row in data:
@@ -167,7 +206,12 @@ def sync_game(game: str, conn):
             """), {"d": draw_date, "n1": main[0], "n2": main[1], "n3": main[2],
                    "n4": main[3], "n5": main[4], "bonus": bonus, "game": game})
             inserted += 1
+    logger.info(f"{game}: fetched {len(data)}, inserted {inserted} new row(s)")
     return inserted
+
+@app.get("/sync-status")
+def sync_status():
+    return {"success": True, "last_sync": _last_sync}
 
 @app.post("/sync-draws")
 def sync_draws():
