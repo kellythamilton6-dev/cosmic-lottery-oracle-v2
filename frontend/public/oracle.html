@@ -111,6 +111,10 @@
   .pm-context-row.prev .pm-context-label { color:var(--text2); }
   .pm-context-row.next .pm-context-label { color:var(--teal); }
   .pm-context-row .ball { width:26px; height:26px; font-size:11px; }
+  .pm-dp-tag { font-size:10px; color:var(--text2); border:1px solid var(--border); border-radius:4px; padding:1px 6px; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; }
+  .pm-toggle-row { display:flex; align-items:center; gap:8px; margin-top:10px; }
+  .pm-toggle-row input { accent-color:var(--purple); width:16px; height:16px; }
+  .pm-toggle-row label { font-size:13px; color:var(--text2); cursor:pointer; }
   .pm-pos-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(100px, 1fr)); gap:10px; margin-top:12px; }
   .pm-pos-tile { background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:12px; }
   .pm-pos-tile.bonus { border-color:var(--coral); }
@@ -417,6 +421,10 @@
             <option value="30">Top 30</option>
           </select>
         </div>
+      </div>
+      <div class="pm-toggle-row" id="pm-dp-toggle-row">
+        <input type="checkbox" id="pm-include-dp" checked onchange="pmOnToggleChange()">
+        <label for="pm-include-dp">Include Powerball Double Play draws</label>
       </div>
       <div class="pm-custom-row" id="pm-custom-row">
         <div class="field"><label>N1</label><input type="number" min="1" id="pm-c0"></div>
@@ -1630,21 +1638,32 @@ function pmDecadeLabels(maxNum) {
   return labels;
 }
 
+function pmIncludeSecondary() {
+  const game = document.getElementById('pm-game').value;
+  if (game !== 'powerball') return false; // Mega Millions has no Double Play
+  return document.getElementById('pm-include-dp').checked;
+}
+
 function pmOnGameChange() {
   const game = document.getElementById('pm-game').value;
   const bonusLabel = game === 'megamillions' ? 'Mega Ball' : 'Powerball';
   document.getElementById('pm-bonus-label').textContent = bonusLabel;
   document.getElementById('pm-freq-bonus-label').textContent = bonusLabel;
+  document.getElementById('pm-dp-toggle-row').style.display = game === 'powerball' ? 'flex' : 'none';
   pmLastCustom = null;
   ['pm-c0', 'pm-c1', 'pm-c2', 'pm-c3', 'pm-c4', 'pm-cbonus'].forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('pm-custom-error').textContent = '';
   pmLoadDrawList(game);
 }
 
+function pmOnToggleChange() {
+  pmLoadDrawList(document.getElementById('pm-game').value);
+}
+
 function pmLoadDrawList(game) {
   const sel = document.getElementById('pm-draw-select');
   sel.innerHTML = '<option value="">Loading...</option>';
-  fetch(`${API}/pattern-match-draws/${game}?limit=100`)
+  fetch(`${API}/pattern-match-draws/${game}?limit=100&include_secondary=${pmIncludeSecondary()}`)
     .then(r => r.json())
     .then(data => {
       pmDraws = data.draws || [];
@@ -1656,10 +1675,12 @@ function pmLoadDrawList(game) {
       pmDraws.forEach(d => {
         const opt = document.createElement('option');
         opt.value = String(d.id);
-        opt.textContent = `${pmFormatDate(d.date)} — ${d.numbers.join(' ')} · +${d.bonus}`;
+        opt.textContent = `${pmFormatDate(d.date)} — ${d.numbers.join(' ')} · +${d.bonus}${d.is_double_play ? ' · Double Play' : ''}`;
         sel.appendChild(opt);
       });
-      sel.value = pmDraws.length ? String(pmDraws[0].id) : 'custom';
+      // Default selection is always the latest MAIN drawing, never Double Play.
+      const defaultDraw = pmDraws.find(d => !d.is_double_play) || pmDraws[0];
+      sel.value = defaultDraw ? String(defaultDraw.id) : 'custom';
       pmOnDrawSelectChange();
     })
     .catch(() => {
@@ -1708,7 +1729,7 @@ function pmRefresh(customOverride) {
   const limit = document.getElementById('pm-match-count').value;
   const drawSelectVal = document.getElementById('pm-draw-select').value;
 
-  let url = `${API}/pattern-match/${game}?limit=${limit}`;
+  let url = `${API}/pattern-match/${game}?limit=${limit}&include_secondary=${pmIncludeSecondary()}`;
   const custom = customOverride || (drawSelectVal === 'custom' ? pmLastCustom : null);
   if (custom) {
     url += `&numbers=${custom.customNumbers.join(',')}&bonus=${custom.customBonus}`;
@@ -1743,8 +1764,10 @@ function pmRender(result, game) {
   const bonusClass = 'ball-coral';
   const bonusLabel = game === 'megamillions' ? 'Mega Ball' : 'Powerball';
 
-  document.getElementById('pm-target-date').textContent =
-    result.target.date === 'Custom numbers' ? 'Custom numbers' : pmFormatDate(result.target.date);
+  const targetLabel = result.target.date === 'Custom numbers' ? 'Custom numbers' : pmFormatDate(result.target.date);
+  document.getElementById('pm-target-date').innerHTML = result.target.is_double_play
+    ? `${targetLabel} <span class="pm-dp-tag">Double Play</span>`
+    : targetLabel;
   document.getElementById('pm-pool-note').textContent = `compared against ${result.pool_size.toLocaleString()} past draws`;
   document.getElementById('pm-target-balls').innerHTML = pmBallsHtml(result.target.numbers, result.target.bonus, mainClass, bonusClass);
 
@@ -1768,11 +1791,11 @@ function pmRender(result, game) {
     listEl.innerHTML = result.matches.map(m => {
       const pd = m.previous_drawing, nd = m.next_drawing;
       const prevHtml = pd
-        ? `<span class="pm-context-label">↰ previous</span><span>${pmFormatDate(pd.date)}</span>
+        ? `<span class="pm-context-label">↰ previous</span><span>${pmFormatDate(pd.date)}</span>${pd.is_double_play ? '<span class="pm-dp-tag">Double Play</span>' : ''}
            <div class="balls-row" style="margin:0;">${pmBallsHtml(pd.numbers, pd.bonus, 'ball-amber', 'ball-coral')}</div>`
         : `<span class="pm-context-label">↰ previous</span><span style="font-style:italic;">no earlier drawing on record</span>`;
       const nextHtml = nd
-        ? `<span class="pm-context-label">↳ next</span><span>${pmFormatDate(nd.date)}</span>
+        ? `<span class="pm-context-label">↳ next</span><span>${pmFormatDate(nd.date)}</span>${nd.is_double_play ? '<span class="pm-dp-tag">Double Play</span>' : ''}
            <div class="balls-row" style="margin:0;">${pmBallsHtml(nd.numbers, nd.bonus, 'ball-teal', 'ball-coral')}</div>`
         : `<span class="pm-context-label">↳ next</span><span style="font-style:italic;">not drawn yet</span>`;
       return `
@@ -1783,7 +1806,7 @@ function pmRender(result, game) {
           </div>
           <div>
             <div class="pm-context-row prev">${prevHtml}</div>
-            <div style="font-weight:600;font-size:14px;margin:8px 0 6px;">${pmFormatDate(m.date)}</div>
+            <div style="font-weight:600;font-size:14px;margin:8px 0 6px;display:flex;align-items:center;gap:8px;">${pmFormatDate(m.date)}${m.is_double_play ? '<span class="pm-dp-tag">Double Play</span>' : ''}</div>
             <div class="balls-row" style="margin:0;">${pmBallsHtml(m.numbers, m.bonus, mainClass, bonusClass)}</div>
             <div class="pm-context-row next">${nextHtml}</div>
           </div>

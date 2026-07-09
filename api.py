@@ -156,11 +156,29 @@ def get_game_config(game):
 # ROUTES
 # ============================================================
 
+def _upsert_draw(conn, table, bonus_col, draw_date, numbers, bonus, game_value):
+    """Insert one draw row if it isn't already there. Existence is checked
+    per (draw_date, game) -- not just draw_date -- since powerball_draws now
+    holds both 'powerball' and 'powerball_doubleplay' rows sharing a date."""
+    existing = conn.execute(
+        text(f"SELECT id FROM {table} WHERE draw_date = :d AND game = :g"),
+        {"d": draw_date, "g": game_value},
+    ).fetchone()
+    if existing:
+        return False
+    conn.execute(text(f"""
+        INSERT INTO {table} (draw_date, n1, n2, n3, n4, n5, {bonus_col}, game)
+        VALUES (:d, :n1, :n2, :n3, :n4, :n5, :bonus, :game)
+    """), {"d": draw_date, "n1": numbers[0], "n2": numbers[1], "n3": numbers[2],
+           "n4": numbers[3], "n5": numbers[4], "bonus": bonus, "game": game_value})
+    return True
+
+
 def sync_game(game: str, conn, limit: int = 40):
     # limit=40 (not just the last handful) so a sync that was missed for a
     # few days still fully catches up in one pass -- the per-row existence
     # check below makes this idempotent, and the unique constraint on
-    # draw_date is a hard backstop against duplicates either way.
+    # (draw_date, game) is a hard backstop against duplicates either way.
     if game == 'powerball':
         url = f"https://data.ny.gov/resource/d6yy-54nr.json?$order=draw_date+DESC&$limit={limit}"
         table = 'powerball_draws'
@@ -188,6 +206,7 @@ def sync_game(game: str, conn, limit: int = 40):
         raise RuntimeError(f"NY Open Data fetch failed for {game} after 3 attempts: {last_err}")
 
     inserted = 0
+    dp_inserted = 0
     for row in data:
         nums = [int(n) for n in row.get("winning_numbers", "").split()]
         if len(nums) < 5:
@@ -198,14 +217,21 @@ def sync_game(game: str, conn, limit: int = 40):
             main = nums[:5]
             bonus = int(row.get("mega_ball", 0) or 0)
         draw_date = row.get("draw_date", "")[:10]
-        existing = conn.execute(text(f"SELECT id FROM {table} WHERE draw_date = :d"), {"d": draw_date}).fetchone()
-        if not existing:
-            conn.execute(text(f"""
-                INSERT INTO {table} (draw_date, n1, n2, n3, n4, n5, {bonus_col}, game)
-                VALUES (:d, :n1, :n2, :n3, :n4, :n5, :bonus, :game)
-            """), {"d": draw_date, "n1": main[0], "n2": main[1], "n3": main[2],
-                   "n4": main[3], "n5": main[4], "bonus": bonus, "game": game})
+        if _upsert_draw(conn, table, bonus_col, draw_date, main, bonus, game):
             inserted += 1
+
+        # NY Open Data includes the same night's Double Play numbers inline
+        # on the main Powerball dataset -- no separate feed needed.
+        if game == 'powerball':
+            dp_raw = row.get("double_play_winning_numbers", "")
+            dp_nums = [int(n) for n in dp_raw.split()] if dp_raw else []
+            if len(dp_nums) == 6:
+                if _upsert_draw(conn, table, bonus_col, draw_date, dp_nums[:5], dp_nums[5], 'powerball_doubleplay'):
+                    dp_inserted += 1
+
+    if game == 'powerball':
+        logger.info(f"powerball: fetched {len(data)}, inserted {inserted} main + {dp_inserted} double play row(s)")
+        return inserted + dp_inserted
     logger.info(f"{game}: fetched {len(data)}, inserted {inserted} new row(s)")
     return inserted
 
@@ -427,10 +453,10 @@ def frequency(game: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/pattern-match-draws/{game}")
-def pattern_match_draws(game: str, limit: int = 100):
+def pattern_match_draws(game: str, limit: int = 100, include_secondary: bool = True):
     try:
         from match_engine import recent_draws_for_picker
-        return {"success": True, "draws": recent_draws_for_picker(game, limit=limit)}
+        return {"success": True, "draws": recent_draws_for_picker(game, limit=limit, include_secondary=include_secondary)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -441,6 +467,7 @@ def pattern_match_route(
     numbers: Optional[str] = None,
     bonus: Optional[int] = None,
     limit: int = 10,
+    include_secondary: bool = True,
 ):
     try:
         from match_engine import pattern_match
@@ -460,6 +487,7 @@ def pattern_match_route(
             custom_numbers=custom_numbers,
             custom_bonus=bonus,
             limit=min(max(limit, 1), 50),
+            include_secondary=include_secondary,
         )
         if result is None:
             raise HTTPException(status_code=404, detail="No data available for this game/draw")

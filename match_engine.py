@@ -32,18 +32,30 @@ def _config(game):
 
 
 def load_all_draws(game):
-    """All draws for `game`, ascending by date, each tagged with a sequential
-    id so `id - 1` / `id + 1` is literally the previous/next drawing."""
+    """All draws for `game` -- for Powerball this always includes Double
+    Play -- ascending by date (and, within a shared date, main drawing
+    before that night's Double Play, since 'powerball' sorts before
+    'powerball_doubleplay'), each tagged with a sequential id so
+    `id - 1` / `id + 1` is literally the previous/next drawing.
+
+    id numbering is always based on this full sequence, never on a
+    toggle-filtered subset, so a given draw_id means the same draw and
+    previous/next-drawing context reflects literal chronological reality
+    regardless of whether Double Play is eligible as a *match* elsewhere.
+    """
     cfg = _config(game)
     with engine.connect() as conn:
         result = conn.execute(text(f"""
-            SELECT draw_date, n1, n2, n3, n4, n5, {cfg['bonus_col']}
+            SELECT draw_date, n1, n2, n3, n4, n5, {cfg['bonus_col']}, game
             FROM {cfg['table']}
-            ORDER BY draw_date ASC
+            ORDER BY draw_date ASC, game ASC
         """))
         rows = result.fetchall()
     return [
-        {"id": i, "date": str(r[0]), "numbers": sorted([r[1], r[2], r[3], r[4], r[5]]), "bonus": r[6]}
+        {
+            "id": i, "date": str(r[0]), "numbers": sorted([r[1], r[2], r[3], r[4], r[5]]),
+            "bonus": r[6], "is_double_play": r[7] == "powerball_doubleplay",
+        }
         for i, r in enumerate(rows)
     ]
 
@@ -132,12 +144,17 @@ def _followup_frequency(matches):
     return white_sorted, bonus_sorted
 
 
-def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, limit=10):
+def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, limit=10, include_secondary=True):
     """Rank historical draws by structural similarity to a target draw.
 
-    Target is either a stored draw (`draw_id`, defaults to the most recent)
-    or ad-hoc `custom_numbers` (+ optional `custom_bonus`) that aren't part
-    of the historical sequence.
+    Target is either a stored draw (`draw_id`, defaults to the most recent
+    *main* drawing) or ad-hoc `custom_numbers` (+ optional `custom_bonus`)
+    that aren't part of the historical sequence. `include_secondary`
+    controls whether Powerball Double Play draws are eligible to appear as
+    *matches*; ignored for Mega Millions, which has no secondary drawing.
+    Previous/next-drawing context always reflects the literal chronological
+    sequence (Double Play included) regardless of this flag, since that's
+    reporting what actually happened next, not proposing a match.
     """
     cfg = _config(game)
     max_num = cfg["max_num"]
@@ -145,19 +162,24 @@ def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, li
     if not draws:
         return None
 
+    main_draws = [d for d in draws if not d["is_double_play"]]
+    candidate_pool = draws if include_secondary else main_draws
+
     if custom_numbers is not None:
-        target = {"id": -1, "date": "Custom numbers", "numbers": sorted(custom_numbers), "bonus": custom_bonus}
+        target = {"id": -1, "date": "Custom numbers", "numbers": sorted(custom_numbers), "bonus": custom_bonus, "is_double_play": False}
     elif draw_id is not None:
+        # Looked up against the full sequence (not the toggled pool) since
+        # id numbering is always stable/full -- see load_all_draws().
         target = next((d for d in draws if d["id"] == draw_id), None)
         if target is None:
             return None
     else:
-        target = draws[-1]
+        target = main_draws[-1] if main_draws else draws[-1]
 
     target_features = compute_features(target["numbers"], max_num)
 
     scored = []
-    for d in draws:
+    for d in candidate_pool:
         if d["id"] == target["id"]:
             continue
         f = compute_features(d["numbers"], max_num)
@@ -177,7 +199,7 @@ def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, li
         "max_num": max_num,
         "bonus_max": cfg["bonus_max"],
         "target": {**target, "features": target_features},
-        "pool_size": len(draws) - (0 if custom_numbers is not None else 1),
+        "pool_size": len(candidate_pool) - (0 if custom_numbers is not None else 1),
         "matches": top,
         "positional_averages": positional_averages,
         "bonus_positional_average": bonus_positional_average,
@@ -186,7 +208,11 @@ def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, li
     }
 
 
-def recent_draws_for_picker(game, limit=100):
+def recent_draws_for_picker(game, limit=100, include_secondary=True):
     draws = load_all_draws(game)
-    recent = draws[-limit:][::-1]
-    return [{"id": d["id"], "date": d["date"], "numbers": d["numbers"], "bonus": d["bonus"]} for d in recent]
+    pool = draws if include_secondary else [d for d in draws if not d["is_double_play"]]
+    recent = pool[-limit:][::-1]
+    return [
+        {"id": d["id"], "date": d["date"], "numbers": d["numbers"], "bonus": d["bonus"], "is_double_play": d["is_double_play"]}
+        for d in recent
+    ]
