@@ -3,8 +3,9 @@
 Ranks historical draws by "shape" similarity to a target draw (sum, odd/even
 split, low/high split, spread, consecutive-number count, decade histogram)
 rather than by which exact numbers were drawn, and surfaces the drawing
-immediately before/after each match plus positional and follow-up-number
-averages across the matches.
+immediately before/after each match, plus positional and follow-up-number
+averages computed from the drawing that followed each match (not the match
+itself) -- i.e. what tends to come next after a draw shaped like this one.
 """
 
 import os
@@ -96,15 +97,19 @@ def _neighbor(draws, target_id, delta):
 
 
 def _positional_averages(matches):
+    """Averages the drawing that FOLLOWED each match, not the match itself --
+    i.e. "when a draw like this happened before, what did the next one tend
+    to look like." Matches with no next_drawing on record are skipped."""
+    next_draws = [m["next_drawing"] for m in matches if m.get("next_drawing")]
     positions = []
     for i in range(5):
-        vals = [m["numbers"][i] for m in matches]
+        vals = [nd["numbers"][i] for nd in next_draws]
         positions.append({
             "avg": round(sum(vals) / len(vals), 1) if vals else None,
             "min": min(vals) if vals else None,
             "max": max(vals) if vals else None,
         })
-    bonus_vals = [m["bonus"] for m in matches if m["bonus"] is not None]
+    bonus_vals = [nd["bonus"] for nd in next_draws if nd["bonus"] is not None]
     bonus = {
         "avg": round(sum(bonus_vals) / len(bonus_vals), 1) if bonus_vals else None,
         "min": min(bonus_vals) if bonus_vals else None,
