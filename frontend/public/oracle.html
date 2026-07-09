@@ -89,6 +89,49 @@
   .alert-error { background: rgba(216,90,48,0.15); border: 1px solid rgba(216,90,48,0.3); color: #F08E6A; }
   #gen-btn { display: block; margin: 0 auto; }
   .mode-bar { background:var(--bg3); border-radius:10px; padding:16px 20px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+
+  /* Pattern Match tab */
+  .pm-chips { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+  .pm-chip { background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:5px 10px; font-size:12px; color:var(--text2); }
+  .pm-chip b { color:var(--text); }
+  .pm-decades { display:flex; align-items:flex-end; gap:5px; height:44px; max-width:320px; margin-top:8px; }
+  .pm-decade-track { flex:1; height:100%; display:flex; align-items:flex-end; background:var(--bg3); border-radius:3px 3px 0 0; }
+  .pm-decade-fill { width:100%; background:var(--teal); border-radius:2px 2px 0 0; min-height:2px; }
+  .pm-decade-labels { display:flex; gap:5px; max-width:320px; margin-top:4px; }
+  .pm-decade-labels span { flex:1; text-align:center; font-size:10px; color:var(--text2); }
+  .pm-match-row { display:grid; grid-template-columns:56px 1fr; gap:14px; background:var(--bg3); border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:10px; }
+  .pm-meter { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; }
+  .pm-meter-pct { font-size:15px; font-weight:600; color:#F0B84A; }
+  .pm-meter-track { width:6px; height:44px; background:var(--border); border-radius:999px; display:flex; flex-direction:column; justify-content:flex-end; overflow:hidden; }
+  .pm-meter-fill { width:100%; background:#F0B84A; border-radius:999px; }
+  .pm-context-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; font-size:11px; color:var(--text2); }
+  .pm-context-row.prev { border-bottom:1px dashed var(--border); padding-bottom:10px; margin-bottom:8px; }
+  .pm-context-row.next { border-top:1px dashed var(--border); padding-top:10px; margin-top:8px; }
+  .pm-context-label { text-transform:uppercase; letter-spacing:0.05em; font-size:10px; white-space:nowrap; }
+  .pm-context-row.prev .pm-context-label { color:var(--text2); }
+  .pm-context-row.next .pm-context-label { color:var(--teal); }
+  .pm-context-row .ball { width:26px; height:26px; font-size:11px; }
+  .pm-pos-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(100px, 1fr)); gap:10px; margin-top:12px; }
+  .pm-pos-tile { background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:12px; }
+  .pm-pos-tile.bonus { border-color:var(--coral); }
+  .pm-pos-ordinal { font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text2); }
+  .pm-pos-avg { font-size:22px; font-weight:600; margin-top:4px; color:#A99FF8; }
+  .pm-pos-tile.bonus .pm-pos-avg { color:#F08E6A; }
+  .pm-pos-range { font-size:11px; color:var(--text2); margin-top:2px; }
+  .pm-pos-track { position:relative; height:5px; background:var(--border); border-radius:999px; margin-top:8px; }
+  .pm-pos-band { position:absolute; top:0; bottom:0; background:rgba(169,159,248,0.35); border-radius:999px; }
+  .pm-pos-tile.bonus .pm-pos-band { background:rgba(240,184,74,0.35); }
+  .pm-pos-dot { position:absolute; top:50%; width:8px; height:8px; border-radius:50%; background:#A99FF8; transform:translate(-50%,-50%); box-shadow:0 0 0 2px var(--bg3); }
+  .pm-pos-tile.bonus .pm-pos-dot { background:#F08E6A; }
+  .pm-freq-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .pm-freq-chip { display:inline-flex; align-items:baseline; gap:4px; background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:5px 9px; font-size:12px; }
+  .pm-freq-chip b { color:#F0B84A; }
+  .pm-freq-chip.bonus b { color:#F08E6A; }
+  .pm-custom-row { display:none; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:12px; }
+  .pm-custom-row.active { display:flex; }
+  .pm-custom-row .field { width:60px; }
+  .pm-custom-row .field.bonus { width:76px; }
+  .pm-custom-row .field label { font-size:11px; color:var(--text2); display:block; margin-bottom:3px; }
 </style>
 </head>
 <body>
@@ -112,6 +155,7 @@
   <button class="nav-btn" onclick="showPanel('patterns',this)">🔍 Pattern Analysis</button>
   <button class="nav-btn" onclick="showPanel('history',this)">📋 History</button>
   <button class="nav-btn" onclick="showPanel('accuracy',this)">📊 Accuracy</button>
+  <button class="nav-btn" onclick="showPanel('patternmatch',this)">🧩 Pattern Match</button>
 </nav>
 
 <div class="content">
@@ -342,6 +386,83 @@
         <div style="font-size:40px;margin-bottom:12px;">🔍</div>
         <div style="font-size:16px;margin-bottom:8px;">Click Run Analysis to begin</div>
         <div style="font-size:13px;">Takes 15-30 seconds · runs 10 different pattern detection algorithms</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PATTERN MATCH -->
+  <div id="panel-patternmatch" class="panel">
+    <div class="card">
+      <h2>🧩 Pattern Match</h2>
+      <p class="sub">Finds historical draws with the same shape as a selected drawing — same sum range, odd/even split, high/low balance, spread, consecutive-number pattern, and decade spread — not the same numbers.</p>
+      <div class="grid3" style="margin-bottom:12px;">
+        <div>
+          <label>Lottery game</label>
+          <select id="pm-game" onchange="pmOnGameChange()">
+            <option value="powerball">Powerball</option>
+            <option value="megamillions">Mega Millions</option>
+          </select>
+        </div>
+        <div>
+          <label>Drawing to analyze</label>
+          <select id="pm-draw-select" onchange="pmOnDrawSelectChange()"></select>
+        </div>
+        <div>
+          <label>Matches to compare</label>
+          <select id="pm-match-count" onchange="pmRefresh()">
+            <option value="5">Top 5</option>
+            <option value="10" selected>Top 10</option>
+            <option value="15">Top 15</option>
+            <option value="20">Top 20</option>
+            <option value="30">Top 30</option>
+          </select>
+        </div>
+      </div>
+      <div class="pm-custom-row" id="pm-custom-row">
+        <div class="field"><label>N1</label><input type="number" min="1" id="pm-c0"></div>
+        <div class="field"><label>N2</label><input type="number" min="1" id="pm-c1"></div>
+        <div class="field"><label>N3</label><input type="number" min="1" id="pm-c2"></div>
+        <div class="field"><label>N4</label><input type="number" min="1" id="pm-c3"></div>
+        <div class="field"><label>N5</label><input type="number" min="1" id="pm-c4"></div>
+        <div class="field bonus"><label id="pm-bonus-label">Powerball</label><input type="number" min="1" id="pm-cbonus"></div>
+        <button class="btn btn-primary" style="font-size:13px;padding:8px 16px;" onclick="pmApplyCustom()">Analyze</button>
+      </div>
+      <div id="pm-custom-error" style="color:#F08E6A;font-size:12px;margin-top:6px;"></div>
+    </div>
+
+    <div id="pm-loading" style="display:none;text-align:center;padding:32px;color:var(--text2);">
+      <span class="loader"></span> Analyzing draw structure...
+    </div>
+
+    <div id="pm-content" style="display:none;">
+      <div class="card">
+        <h2 id="pm-target-date">—</h2>
+        <p class="sub" id="pm-pool-note"></p>
+        <div class="balls-row" id="pm-target-balls"></div>
+        <div class="pm-chips" id="pm-target-chips"></div>
+        <div class="pm-decades" id="pm-target-decades"></div>
+        <div class="pm-decade-labels" id="pm-decade-labels"></div>
+      </div>
+
+      <div class="card">
+        <h2>Closest structural matches</h2>
+        <p class="sub">Each card shows the drawing right before and right after the match — literally whichever drawing happened next, main or otherwise.</p>
+        <div id="pm-match-list" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Positional averages</h2>
+        <p class="sub">Sort each match's numbers low to high, then average straight down the columns — the average 1st (lowest) number, 2nd number, and so on, across the matches above.</p>
+        <div class="pm-pos-grid" id="pm-pos-grid"></div>
+      </div>
+
+      <div class="card">
+        <h2>Follow-up number frequency</h2>
+        <p class="sub">Which numbers showed up most in the drawing immediately after each match above — a pattern-exploration signal, not a forecast. Draws are independent; this doesn't change the odds of any number.</p>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">White balls</div>
+        <div class="pm-freq-row" id="pm-freq-white" style="margin-bottom:14px;"></div>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" id="pm-freq-bonus-label">Powerball</div>
+        <div class="pm-freq-row" id="pm-freq-bonus"></div>
       </div>
     </div>
   </div>
@@ -1477,6 +1598,246 @@ function renderPatternDashboard(r) {
 }
 loadMoon();
 updatePredList();
+
+// ============================================================
+// PATTERN MATCH TAB
+// ============================================================
+let pmDraws = [];
+let pmLastCustom = null;
+
+function pmFormatDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
+function pmBallsHtml(numbers, bonus, mainClass, bonusClass) {
+  let html = (numbers || []).map(n => `<span class="ball ${mainClass}">${n}</span>`).join('');
+  if (bonus !== null && bonus !== undefined) {
+    html += `<span style="color:var(--text2);margin:0 2px;">+</span><span class="ball ${bonusClass}">${bonus}</span>`;
+  }
+  return html;
+}
+
+function pmDecadeLabels(maxNum) {
+  const labels = [];
+  let lo = 1;
+  while (lo <= maxNum) {
+    labels.push(`${lo}-${Math.min(lo + 9, maxNum)}`);
+    lo += 10;
+  }
+  return labels;
+}
+
+function pmOnGameChange() {
+  const game = document.getElementById('pm-game').value;
+  const bonusLabel = game === 'megamillions' ? 'Mega Ball' : 'Powerball';
+  document.getElementById('pm-bonus-label').textContent = bonusLabel;
+  document.getElementById('pm-freq-bonus-label').textContent = bonusLabel;
+  pmLastCustom = null;
+  ['pm-c0', 'pm-c1', 'pm-c2', 'pm-c3', 'pm-c4', 'pm-cbonus'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('pm-custom-error').textContent = '';
+  pmLoadDrawList(game);
+}
+
+function pmLoadDrawList(game) {
+  const sel = document.getElementById('pm-draw-select');
+  sel.innerHTML = '<option value="">Loading...</option>';
+  fetch(`${API}/pattern-match-draws/${game}?limit=100`)
+    .then(r => r.json())
+    .then(data => {
+      pmDraws = data.draws || [];
+      sel.innerHTML = '';
+      const customOpt = document.createElement('option');
+      customOpt.value = 'custom';
+      customOpt.textContent = '— Type in your own numbers —';
+      sel.appendChild(customOpt);
+      pmDraws.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = String(d.id);
+        opt.textContent = `${pmFormatDate(d.date)} — ${d.numbers.join(' ')} · +${d.bonus}`;
+        sel.appendChild(opt);
+      });
+      sel.value = pmDraws.length ? String(pmDraws[0].id) : 'custom';
+      pmOnDrawSelectChange();
+    })
+    .catch(() => {
+      sel.innerHTML = '<option value="custom">— Type in your own numbers —</option>';
+      sel.value = 'custom';
+      pmOnDrawSelectChange();
+    });
+}
+
+function pmOnDrawSelectChange() {
+  const val = document.getElementById('pm-draw-select').value;
+  document.getElementById('pm-custom-row').classList.toggle('active', val === 'custom');
+  document.getElementById('pm-custom-error').textContent = '';
+  if (val !== 'custom') pmRefresh();
+}
+
+function pmApplyCustom() {
+  const game = document.getElementById('pm-game').value;
+  const maxNum = game === 'megamillions' ? 70 : 69;
+  const bonusMax = game === 'megamillions' ? 25 : 26;
+  const errEl = document.getElementById('pm-custom-error');
+
+  const ids = ['pm-c0', 'pm-c1', 'pm-c2', 'pm-c3', 'pm-c4'];
+  const nums = ids.map(id => parseInt(document.getElementById(id).value, 10));
+  const bonus = parseInt(document.getElementById('pm-cbonus').value, 10);
+
+  if (nums.some(n => isNaN(n) || n < 1 || n > maxNum)) {
+    errEl.textContent = `Enter five numbers between 1 and ${maxNum}.`;
+    return;
+  }
+  if (new Set(nums).size !== 5) {
+    errEl.textContent = 'All five numbers must be different.';
+    return;
+  }
+  if (isNaN(bonus) || bonus < 1 || bonus > bonusMax) {
+    errEl.textContent = `Bonus number must be between 1 and ${bonusMax}.`;
+    return;
+  }
+  errEl.textContent = '';
+  pmLastCustom = { customNumbers: nums, customBonus: bonus };
+  pmRefresh(pmLastCustom);
+}
+
+function pmRefresh(customOverride) {
+  const game = document.getElementById('pm-game').value;
+  const limit = document.getElementById('pm-match-count').value;
+  const drawSelectVal = document.getElementById('pm-draw-select').value;
+
+  let url = `${API}/pattern-match/${game}?limit=${limit}`;
+  const custom = customOverride || (drawSelectVal === 'custom' ? pmLastCustom : null);
+  if (custom) {
+    url += `&numbers=${custom.customNumbers.join(',')}&bonus=${custom.customBonus}`;
+  } else if (drawSelectVal === 'custom') {
+    return; // no custom numbers entered yet -- wait for Analyze
+  } else if (drawSelectVal) {
+    url += `&draw_id=${drawSelectVal}`;
+  } else {
+    return;
+  }
+
+  const loadingEl = document.getElementById('pm-loading');
+  loadingEl.style.display = 'block';
+  loadingEl.innerHTML = '<span class="loader"></span> Analyzing draw structure...';
+  document.getElementById('pm-content').style.display = 'none';
+
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) throw new Error(data.detail || 'Failed to load pattern match');
+      pmRender(data.result, game);
+      loadingEl.style.display = 'none';
+      document.getElementById('pm-content').style.display = 'block';
+    })
+    .catch(e => {
+      loadingEl.innerHTML = `<div class="alert alert-error">Could not load pattern match: ${e.message}</div>`;
+    });
+}
+
+function pmRender(result, game) {
+  const mainClass = 'ball-purple';
+  const bonusClass = 'ball-coral';
+  const bonusLabel = game === 'megamillions' ? 'Mega Ball' : 'Powerball';
+
+  document.getElementById('pm-target-date').textContent =
+    result.target.date === 'Custom numbers' ? 'Custom numbers' : pmFormatDate(result.target.date);
+  document.getElementById('pm-pool-note').textContent = `compared against ${result.pool_size.toLocaleString()} past draws`;
+  document.getElementById('pm-target-balls').innerHTML = pmBallsHtml(result.target.numbers, result.target.bonus, mainClass, bonusClass);
+
+  const f = result.target.features;
+  document.getElementById('pm-target-chips').innerHTML = `
+    <span class="pm-chip">Sum <b>${f.sum}</b></span>
+    <span class="pm-chip"><b>${f.odd_count}</b> odd / <b>${f.even_count}</b> even</span>
+    <span class="pm-chip"><b>${f.low_count}</b> low / <b>${f.high_count}</b> high</span>
+    <span class="pm-chip">Spread <b>${f.spread}</b></span>
+    <span class="pm-chip"><b>${f.consecutive_pairs}</b> consecutive pair${f.consecutive_pairs === 1 ? '' : 's'}</span>
+  `;
+  document.getElementById('pm-target-decades').innerHTML = f.decade_histogram
+    .map(c => `<div class="pm-decade-track"><div class="pm-decade-fill" style="height:${(c / 5) * 100}%"></div></div>`)
+    .join('');
+  document.getElementById('pm-decade-labels').innerHTML = pmDecadeLabels(result.max_num).map(l => `<span>${l}</span>`).join('');
+
+  const listEl = document.getElementById('pm-match-list');
+  if (!result.matches.length) {
+    listEl.innerHTML = '<div style="color:var(--text2);font-size:13px;">No matches found.</div>';
+  } else {
+    listEl.innerHTML = result.matches.map(m => {
+      const pd = m.previous_drawing, nd = m.next_drawing;
+      const prevHtml = pd
+        ? `<span class="pm-context-label">↰ previous</span><span>${pmFormatDate(pd.date)}</span>
+           <div class="balls-row" style="margin:0;">${pmBallsHtml(pd.numbers, pd.bonus, 'ball-amber', 'ball-coral')}</div>`
+        : `<span class="pm-context-label">↰ previous</span><span style="font-style:italic;">no earlier drawing on record</span>`;
+      const nextHtml = nd
+        ? `<span class="pm-context-label">↳ next</span><span>${pmFormatDate(nd.date)}</span>
+           <div class="balls-row" style="margin:0;">${pmBallsHtml(nd.numbers, nd.bonus, 'ball-teal', 'ball-coral')}</div>`
+        : `<span class="pm-context-label">↳ next</span><span style="font-style:italic;">not drawn yet</span>`;
+      return `
+        <div class="pm-match-row">
+          <div class="pm-meter">
+            <div class="pm-meter-pct">${m.score}%</div>
+            <div class="pm-meter-track"><div class="pm-meter-fill" style="height:${m.score}%"></div></div>
+          </div>
+          <div>
+            <div class="pm-context-row prev">${prevHtml}</div>
+            <div style="font-weight:600;font-size:14px;margin:8px 0 6px;">${pmFormatDate(m.date)}</div>
+            <div class="balls-row" style="margin:0;">${pmBallsHtml(m.numbers, m.bonus, mainClass, bonusClass)}</div>
+            <div class="pm-context-row next">${nextHtml}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  pmRenderPositional(result, bonusLabel);
+  pmRenderFrequency(result, bonusLabel);
+}
+
+function pmPosTile(label, p, domainMax, isBonus) {
+  if (p.avg === null) return '';
+  const scale = v => ((v - 1) / (domainMax - 1)) * 100;
+  return `
+    <div class="pm-pos-tile${isBonus ? ' bonus' : ''}">
+      <div class="pm-pos-ordinal">${label}</div>
+      <div class="pm-pos-avg">${p.avg.toFixed(1)}</div>
+      <div class="pm-pos-range">range ${p.min}–${p.max}</div>
+      <div class="pm-pos-track">
+        <div class="pm-pos-band" style="left:${scale(p.min)}%; width:${Math.max(scale(p.max) - scale(p.min), 1)}%;"></div>
+        <div class="pm-pos-dot" style="left:${scale(p.avg)}%;"></div>
+      </div>
+    </div>`;
+}
+
+function pmRenderPositional(result, bonusLabel) {
+  const el = document.getElementById('pm-pos-grid');
+  const positions = result.positional_averages || [];
+  if (!positions.length || positions[0].avg === null) {
+    el.innerHTML = '<span style="color:var(--text2);font-size:13px;">No matches to average.</span>';
+    return;
+  }
+  const ORDINALS = ['1st · lowest', '2nd', '3rd', '4th', '5th · highest'];
+  let html = positions.map((p, i) => pmPosTile(ORDINALS[i], p, result.max_num, false)).join('');
+  html += pmPosTile(bonusLabel, result.bonus_positional_average, result.bonus_max, true);
+  el.innerHTML = html;
+}
+
+function pmRenderFrequency(result, bonusLabel) {
+  document.getElementById('pm-freq-bonus-label').textContent = bonusLabel;
+  const white = result.followup_white_frequency || [];
+  const bonus = result.followup_bonus_frequency || [];
+  const emptyMsg = '<span style="color:var(--text2);font-size:12px;">No follow-up drawings recorded for the matches shown.</span>';
+
+  document.getElementById('pm-freq-white').innerHTML = white.length
+    ? white.map(([num, count]) => `<span class="pm-freq-chip">${num} <b>×${count}</b></span>`).join('')
+    : emptyMsg;
+  document.getElementById('pm-freq-bonus').innerHTML = bonus.length
+    ? bonus.map(([num, count]) => `<span class="pm-freq-chip bonus">${num} <b>×${count}</b></span>`).join('')
+    : emptyMsg;
+}
+
+pmOnGameChange();
 </script>
 </body>
 </html>

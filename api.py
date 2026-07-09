@@ -382,6 +382,49 @@ def frequency(game: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/pattern-match-draws/{game}")
+def pattern_match_draws(game: str, limit: int = 100):
+    try:
+        from match_engine import recent_draws_for_picker
+        return {"success": True, "draws": recent_draws_for_picker(game, limit=limit)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/pattern-match/{game}")
+def pattern_match_route(
+    game: str,
+    draw_id: Optional[int] = None,
+    numbers: Optional[str] = None,
+    bonus: Optional[int] = None,
+    limit: int = 10,
+):
+    try:
+        from match_engine import pattern_match
+
+        custom_numbers = None
+        if numbers:
+            try:
+                custom_numbers = [int(x) for x in numbers.split(",")]
+            except ValueError:
+                raise HTTPException(status_code=400, detail="numbers must be comma-separated integers")
+            if len(custom_numbers) != 5 or len(set(custom_numbers)) != 5:
+                raise HTTPException(status_code=400, detail="Provide exactly 5 distinct numbers")
+
+        result = pattern_match(
+            game,
+            draw_id=draw_id,
+            custom_numbers=custom_numbers,
+            custom_bonus=bonus,
+            limit=min(max(limit, 1), 50),
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="No data available for this game/draw")
+        return {"success": True, "result": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/predict-historical")
 def predict_historical(req: PredictionRequest):
     try:
