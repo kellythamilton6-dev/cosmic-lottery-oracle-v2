@@ -127,21 +127,45 @@ def _positional_averages(matches):
         "min": min(bonus_vals) if bonus_vals else None,
         "max": max(bonus_vals) if bonus_vals else None,
     }
+    return positions, bonus, len(next_draws)
+
+
+def _baseline_positional_averages(draws):
+    """Positional averages across the WHOLE candidate pool, no similarity
+    filter -- "what a typical draw looks like regardless of anything." Since
+    draws are independent, this is the number the similarity-based averages
+    above should be compared against: a similarity-based average that's
+    barely different from this baseline is telling you structural
+    similarity isn't shifting the next draw at all (which, for an
+    independent random process, is the expected and honest result)."""
+    positions = []
+    for i in range(5):
+        vals = [d["numbers"][i] for d in draws]
+        positions.append({"avg": round(sum(vals) / len(vals), 1) if vals else None})
+    bonus_vals = [d["bonus"] for d in draws if d["bonus"] is not None]
+    bonus = {"avg": round(sum(bonus_vals) / len(bonus_vals), 1) if bonus_vals else None}
     return positions, bonus
 
 
-def _followup_frequency(matches):
+def _followup_frequency(matches, max_num, bonus_max):
     white_counts, bonus_counts = {}, {}
+    sample_size = 0
     for m in matches:
         nd = m.get("next_drawing")
         if not nd:
             continue
+        sample_size += 1
         for n in nd["numbers"]:
             white_counts[n] = white_counts.get(n, 0) + 1
         bonus_counts[nd["bonus"]] = bonus_counts.get(nd["bonus"], 0) + 1
     white_sorted = sorted(white_counts.items(), key=lambda x: (-x[1], x[0]))[:15]
     bonus_sorted = sorted(bonus_counts.items(), key=lambda x: (-x[1], x[0]))[:10]
-    return white_sorted, bonus_sorted
+    # Expected count for any single number under pure chance, given this
+    # sample size -- the noise floor a chip's count should be read against.
+    # Each next-drawing contributes 5 white-ball slots and 1 bonus slot.
+    white_expected = round((sample_size * 5) / max_num, 2) if sample_size else 0.0
+    bonus_expected = round(sample_size / bonus_max, 2) if sample_size else 0.0
+    return white_sorted, bonus_sorted, sample_size, white_expected, bonus_expected
 
 
 def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, limit=10, include_secondary=True):
@@ -191,8 +215,10 @@ def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, li
         m["previous_drawing"] = _neighbor(draws, m["id"], -1)
         m["next_drawing"] = _neighbor(draws, m["id"], 1)
 
-    positional_averages, bonus_positional_average = _positional_averages(top)
-    followup_white_frequency, followup_bonus_frequency = _followup_frequency(top)
+    positional_averages, bonus_positional_average, positional_sample_size = _positional_averages(top)
+    baseline_positional_averages, baseline_bonus_positional_average = _baseline_positional_averages(candidate_pool)
+    followup_white_frequency, followup_bonus_frequency, followup_sample_size, followup_white_expected, followup_bonus_expected = \
+        _followup_frequency(top, max_num, cfg["bonus_max"])
 
     return {
         "game": game,
@@ -203,8 +229,14 @@ def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, li
         "matches": top,
         "positional_averages": positional_averages,
         "bonus_positional_average": bonus_positional_average,
+        "positional_sample_size": positional_sample_size,
+        "baseline_positional_averages": baseline_positional_averages,
+        "baseline_bonus_positional_average": baseline_bonus_positional_average,
         "followup_white_frequency": followup_white_frequency,
         "followup_bonus_frequency": followup_bonus_frequency,
+        "followup_sample_size": followup_sample_size,
+        "followup_white_expected": followup_white_expected,
+        "followup_bonus_expected": followup_bonus_expected,
     }
 
 

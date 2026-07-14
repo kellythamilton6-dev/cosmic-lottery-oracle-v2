@@ -127,10 +127,15 @@
   .pm-pos-tile.bonus .pm-pos-band { background:rgba(240,184,74,0.35); }
   .pm-pos-dot { position:absolute; top:50%; width:8px; height:8px; border-radius:50%; background:#A99FF8; transform:translate(-50%,-50%); box-shadow:0 0 0 2px var(--bg3); }
   .pm-pos-tile.bonus .pm-pos-dot { background:#F08E6A; }
+  .pm-pos-baseline-tick { position:absolute; top:-3px; width:2px; height:11px; background:var(--text2); opacity:0.7; }
+  .pm-pos-baseline-label { font-size:10px; color:var(--text2); margin-top:6px; }
+  .pm-pos-baseline-label b { color:var(--text); font-weight:500; }
   .pm-freq-row { display:flex; flex-wrap:wrap; gap:6px; }
   .pm-freq-chip { display:inline-flex; align-items:baseline; gap:4px; background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:5px 9px; font-size:12px; }
   .pm-freq-chip b { color:#F0B84A; }
   .pm-freq-chip.bonus b { color:#F08E6A; }
+  .pm-freq-chip.notable { border-color:#A99FF8; }
+  .pm-freq-chip.bonus.notable { border-color:#F08E6A; }
   .pm-custom-row { display:none; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:12px; }
   .pm-custom-row.active { display:flex; }
   .pm-custom-row .field { width:60px; }
@@ -460,13 +465,14 @@
 
       <div class="card">
         <h2>Positional averages — next drawing</h2>
-        <p class="sub">For each match above, take the drawing that followed it, sort its numbers low to high, then average straight down the columns — the average 1st (lowest) number, 2nd number, and so on, in the drawing that came next.</p>
+        <p class="sub">For each match above, take the drawing that followed it, sort its numbers low to high, then average straight down the columns — the average 1st (lowest) number, 2nd number, and so on, in the drawing that came next. Each tile also shows the baseline average across <em>all</em> history with no similarity filter — draws are independent, so a value close to baseline means structural similarity isn't really shifting anything; a handful of points either way at this sample size is typical noise, not a real signal.</p>
         <div class="pm-pos-grid" id="pm-pos-grid"></div>
       </div>
 
       <div class="card">
         <h2>Follow-up number frequency</h2>
         <p class="sub">Which numbers showed up most in the drawing immediately after each match above — a pattern-exploration signal, not a forecast. Draws are independent; this doesn't change the odds of any number.</p>
+        <p class="sub" id="pm-freq-expected-note" style="margin-top:-8px;"></p>
         <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">White balls</div>
         <div class="pm-freq-row" id="pm-freq-white" style="margin-bottom:14px;"></div>
         <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;" id="pm-freq-bonus-label">Powerball</div>
@@ -1818,9 +1824,19 @@ function pmRender(result, game) {
   pmRenderFrequency(result, bonusLabel);
 }
 
-function pmPosTile(label, p, domainMax, isBonus) {
+function pmPosTile(label, p, baseline, domainMax, isBonus) {
   if (p.avg === null) return '';
   const scale = v => ((v - 1) / (domainMax - 1)) * 100;
+  const baselineTick = (baseline && baseline.avg !== null)
+    ? `<div class="pm-pos-baseline-tick" style="left:${scale(baseline.avg)}%;"></div>`
+    : '';
+  const baselineLine = (baseline && baseline.avg !== null)
+    ? (() => {
+        const delta = p.avg - baseline.avg;
+        const sign = delta >= 0 ? '+' : '';
+        return `<div class="pm-pos-baseline-label">baseline <b>${baseline.avg.toFixed(1)}</b> (${sign}${delta.toFixed(1)})</div>`;
+      })()
+    : '';
   return `
     <div class="pm-pos-tile${isBonus ? ' bonus' : ''}">
       <div class="pm-pos-ordinal">${label}</div>
@@ -1828,8 +1844,10 @@ function pmPosTile(label, p, domainMax, isBonus) {
       <div class="pm-pos-range">range ${p.min}–${p.max}</div>
       <div class="pm-pos-track">
         <div class="pm-pos-band" style="left:${scale(p.min)}%; width:${Math.max(scale(p.max) - scale(p.min), 1)}%;"></div>
+        ${baselineTick}
         <div class="pm-pos-dot" style="left:${scale(p.avg)}%;"></div>
       </div>
+      ${baselineLine}
     </div>`;
 }
 
@@ -1841,8 +1859,9 @@ function pmRenderPositional(result, bonusLabel) {
     return;
   }
   const ORDINALS = ['1st · lowest', '2nd', '3rd', '4th', '5th · highest'];
-  let html = positions.map((p, i) => pmPosTile(ORDINALS[i], p, result.max_num, false)).join('');
-  html += pmPosTile(bonusLabel, result.bonus_positional_average, result.bonus_max, true);
+  const baselines = result.baseline_positional_averages || [];
+  let html = positions.map((p, i) => pmPosTile(ORDINALS[i], p, baselines[i], result.max_num, false)).join('');
+  html += pmPosTile(bonusLabel, result.bonus_positional_average, result.baseline_bonus_positional_average, result.bonus_max, true);
   el.innerHTML = html;
 }
 
@@ -1852,11 +1871,25 @@ function pmRenderFrequency(result, bonusLabel) {
   const bonus = result.followup_bonus_frequency || [];
   const emptyMsg = '<span style="color:var(--text2);font-size:12px;">No follow-up drawings recorded for the matches shown.</span>';
 
+  const n = result.followup_sample_size || 0;
+  const noteEl = document.getElementById('pm-freq-expected-note');
+  noteEl.textContent = n
+    ? `At ${n} follow-up drawing${n === 1 ? '' : 's'}, any single number is expected to show up about ${result.followup_white_expected}× by pure chance (${bonusLabel.toLowerCase()}: ${result.followup_bonus_expected}×) — read counts near that as noise, not a pattern.`
+    : '';
+
+  const whiteExpected = result.followup_white_expected || 0;
+  const bonusExpected = result.followup_bonus_expected || 0;
+  // Require both a real multiple of the expected rate AND an absolute floor
+  // of 3 -- at small sample sizes "expected" is well under 1, so "2x
+  // expected" alone flags almost every chip with count>=2, which is
+  // backwards: low N is exactly when counts should be trusted *less*.
+  const isNotable = (count, expected) => count >= 3 && count > expected * 2;
+
   document.getElementById('pm-freq-white').innerHTML = white.length
-    ? white.map(([num, count]) => `<span class="pm-freq-chip">${num} <b>×${count}</b></span>`).join('')
+    ? white.map(([num, count]) => `<span class="pm-freq-chip${isNotable(count, whiteExpected) ? ' notable' : ''}">${num} <b>×${count}</b></span>`).join('')
     : emptyMsg;
   document.getElementById('pm-freq-bonus').innerHTML = bonus.length
-    ? bonus.map(([num, count]) => `<span class="pm-freq-chip bonus">${num} <b>×${count}</b></span>`).join('')
+    ? bonus.map(([num, count]) => `<span class="pm-freq-chip bonus${isNotable(count, bonusExpected) ? ' notable' : ''}">${num} <b>×${count}</b></span>`).join('')
     : emptyMsg;
 }
 
