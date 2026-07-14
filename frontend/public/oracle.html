@@ -415,7 +415,7 @@
           </select>
         </div>
         <div>
-          <label>Drawing to analyze</label>
+          <label>Drawing to analyze <span style="font-weight:normal;color:var(--text2);">(full history — click in and type a date, e.g. "Mar", to jump)</span></label>
           <select id="pm-draw-select" onchange="pmOnDrawSelectChange()"></select>
         </div>
         <div>
@@ -1671,7 +1671,7 @@ function pmOnToggleChange() {
 function pmLoadDrawList(game) {
   const sel = document.getElementById('pm-draw-select');
   sel.innerHTML = '<option value="">Loading...</option>';
-  fetch(`${API}/pattern-match-draws/${game}?limit=100&include_secondary=${pmIncludeSecondary()}`)
+  fetch(`${API}/pattern-match-draws/${game}?limit=5000&include_secondary=${pmIncludeSecondary()}`)
     .then(r => r.json())
     .then(data => {
       pmDraws = data.draws || [];
