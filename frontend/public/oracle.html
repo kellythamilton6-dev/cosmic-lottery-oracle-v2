@@ -130,6 +130,8 @@
   .pm-pos-baseline-tick { position:absolute; top:-3px; width:2px; height:11px; background:var(--text2); opacity:0.7; }
   .pm-pos-baseline-label { font-size:10px; color:var(--text2); margin-top:6px; }
   .pm-pos-baseline-label b { color:var(--text); font-weight:500; }
+  .pm-pos-actual-tick { position:absolute; top:-3px; width:2px; height:11px; background:var(--teal); }
+  .pm-pos-actual-label b { color:var(--teal); font-weight:600; }
   .pm-freq-row { display:flex; flex-wrap:wrap; gap:6px; }
   .pm-freq-chip { display:inline-flex; align-items:baseline; gap:4px; background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:5px 9px; font-size:12px; }
   .pm-freq-chip b { color:#F0B84A; }
@@ -465,7 +467,7 @@
 
       <div class="card">
         <h2>Positional averages — next drawing</h2>
-        <p class="sub">For each match above, take the drawing that followed it, sort its numbers low to high, then average straight down the columns — the average 1st (lowest) number, 2nd number, and so on, in the drawing that came next. Each tile also shows the baseline average across <em>all</em> history with no similarity filter — draws are independent, so a value close to baseline means structural similarity isn't really shifting anything; a handful of points either way at this sample size is typical noise, not a real signal.</p>
+        <p class="sub">For each match above, take the drawing that followed it, sort its numbers low to high, then average straight down the columns — the average 1st (lowest) number, 2nd number, and so on, in the drawing that came next. If the selected drawing's own next drawing is already on record, each tile shows it in <span style="color:var(--teal);font-weight:600;">teal</span> and the delta from the average — i.e. how far this estimate actually landed from what really happened. Otherwise (the drawing hasn't had a follow-up yet) it falls back to the all-history baseline average instead. Either way, draws are independent — a handful of points off is typical noise, not a real miss or a real signal.</p>
         <div class="pm-pos-grid" id="pm-pos-grid"></div>
       </div>
 
@@ -1824,19 +1826,24 @@ function pmRender(result, game) {
   pmRenderFrequency(result, bonusLabel);
 }
 
-function pmPosTile(label, p, baseline, domainMax, isBonus) {
+function pmPosTile(label, p, baseline, actualValue, actualDelta, domainMax, isBonus) {
   if (p.avg === null) return '';
   const scale = v => ((v - 1) / (domainMax - 1)) * 100;
-  const baselineTick = (baseline && baseline.avg !== null)
-    ? `<div class="pm-pos-baseline-tick" style="left:${scale(baseline.avg)}%;"></div>`
-    : '';
-  const baselineLine = (baseline && baseline.avg !== null)
-    ? (() => {
-        const delta = p.avg - baseline.avg;
-        const sign = delta >= 0 ? '+' : '';
-        return `<div class="pm-pos-baseline-label">baseline <b>${baseline.avg.toFixed(1)}</b> (${sign}${delta.toFixed(1)})</div>`;
-      })()
-    : '';
+  const hasActual = actualValue !== null && actualValue !== undefined && actualDelta !== null && actualDelta !== undefined;
+
+  let markerTick = '';
+  let compareLine = '';
+  if (hasActual) {
+    const sign = actualDelta >= 0 ? '+' : '';
+    markerTick = `<div class="pm-pos-actual-tick" style="left:${scale(actualValue)}%;"></div>`;
+    compareLine = `<div class="pm-pos-baseline-label pm-pos-actual-label">next drawing <b>${actualValue}</b> (${sign}${actualDelta.toFixed(1)})</div>`;
+  } else if (baseline && baseline.avg !== null) {
+    const delta = p.avg - baseline.avg;
+    const sign = delta >= 0 ? '+' : '';
+    markerTick = `<div class="pm-pos-baseline-tick" style="left:${scale(baseline.avg)}%;"></div>`;
+    compareLine = `<div class="pm-pos-baseline-label">baseline <b>${baseline.avg.toFixed(1)}</b> (${sign}${delta.toFixed(1)})</div>`;
+  }
+
   return `
     <div class="pm-pos-tile${isBonus ? ' bonus' : ''}">
       <div class="pm-pos-ordinal">${label}</div>
@@ -1844,10 +1851,10 @@ function pmPosTile(label, p, baseline, domainMax, isBonus) {
       <div class="pm-pos-range">range ${p.min}–${p.max}</div>
       <div class="pm-pos-track">
         <div class="pm-pos-band" style="left:${scale(p.min)}%; width:${Math.max(scale(p.max) - scale(p.min), 1)}%;"></div>
-        ${baselineTick}
+        ${markerTick}
         <div class="pm-pos-dot" style="left:${scale(p.avg)}%;"></div>
       </div>
-      ${baselineLine}
+      ${compareLine}
     </div>`;
 }
 
@@ -1860,8 +1867,18 @@ function pmRenderPositional(result, bonusLabel) {
   }
   const ORDINALS = ['1st · lowest', '2nd', '3rd', '4th', '5th · highest'];
   const baselines = result.baseline_positional_averages || [];
-  let html = positions.map((p, i) => pmPosTile(ORDINALS[i], p, baselines[i], result.max_num, false)).join('');
-  html += pmPosTile(bonusLabel, result.bonus_positional_average, result.baseline_bonus_positional_average, result.bonus_max, true);
+  const actualNext = result.target && result.target.next_drawing;
+  const actualDeltas = result.actual_positional_deltas || [];
+
+  let html = positions.map((p, i) => {
+    const actualValue = actualNext ? actualNext.numbers[i] : null;
+    const actualDelta = actualDeltas.length ? actualDeltas[i] : null;
+    return pmPosTile(ORDINALS[i], p, baselines[i], actualValue, actualDelta, result.max_num, false);
+  }).join('');
+
+  const bonusActualValue = actualNext ? actualNext.bonus : null;
+  const bonusActualDelta = result.actual_bonus_delta !== undefined ? result.actual_bonus_delta : null;
+  html += pmPosTile(bonusLabel, result.bonus_positional_average, result.baseline_bonus_positional_average, bonusActualValue, bonusActualDelta, result.bonus_max, true);
   el.innerHTML = html;
 }
 

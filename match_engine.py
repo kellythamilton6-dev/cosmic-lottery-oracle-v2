@@ -147,6 +147,26 @@ def _baseline_positional_averages(draws):
     return positions, bonus
 
 
+def _actual_outcome_deltas(positional_averages, bonus_positional_average, actual_next_drawing):
+    """How far the similarity-based positional averages actually landed from
+    what really happened next, position by position -- e.g. the average
+    predicted 14.7 for position 1 and the real next drawing's lowest number
+    was 5, so the delta is -9.7. None if the target's own next drawing isn't
+    on record yet (it's the most recent draw, or custom numbers)."""
+    if not actual_next_drawing:
+        return None, None
+    deltas = [
+        round(actual_next_drawing["numbers"][i] - p["avg"], 1) if p["avg"] is not None else None
+        for i, p in enumerate(positional_averages)
+    ]
+    bonus_delta = (
+        round(actual_next_drawing["bonus"] - bonus_positional_average["avg"], 1)
+        if bonus_positional_average["avg"] is not None and actual_next_drawing.get("bonus") is not None
+        else None
+    )
+    return deltas, bonus_delta
+
+
 def _followup_frequency(matches, max_num, bonus_max):
     white_counts, bonus_counts = {}, {}
     sample_size = 0
@@ -215,8 +235,17 @@ def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, li
         m["previous_drawing"] = _neighbor(draws, m["id"], -1)
         m["next_drawing"] = _neighbor(draws, m["id"], 1)
 
+    # The target's own neighbors -- id=-1 (custom numbers) isn't part of the
+    # sequence, so _neighbor's id+1 arithmetic would wrongly resolve to
+    # draws[0] there; guard it explicitly.
+    target_next_drawing = _neighbor(draws, target["id"], 1) if target["id"] >= 0 else None
+    target_previous_drawing = _neighbor(draws, target["id"], -1) if target["id"] >= 0 else None
+
     positional_averages, bonus_positional_average, positional_sample_size = _positional_averages(top)
     baseline_positional_averages, baseline_bonus_positional_average = _baseline_positional_averages(candidate_pool)
+    actual_positional_deltas, actual_bonus_delta = _actual_outcome_deltas(
+        positional_averages, bonus_positional_average, target_next_drawing
+    )
     followup_white_frequency, followup_bonus_frequency, followup_sample_size, followup_white_expected, followup_bonus_expected = \
         _followup_frequency(top, max_num, cfg["bonus_max"])
 
@@ -224,7 +253,10 @@ def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, li
         "game": game,
         "max_num": max_num,
         "bonus_max": cfg["bonus_max"],
-        "target": {**target, "features": target_features},
+        "target": {
+            **target, "features": target_features,
+            "next_drawing": target_next_drawing, "previous_drawing": target_previous_drawing,
+        },
         "pool_size": len(candidate_pool) - (0 if custom_numbers is not None else 1),
         "matches": top,
         "positional_averages": positional_averages,
@@ -232,6 +264,8 @@ def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, li
         "positional_sample_size": positional_sample_size,
         "baseline_positional_averages": baseline_positional_averages,
         "baseline_bonus_positional_average": baseline_bonus_positional_average,
+        "actual_positional_deltas": actual_positional_deltas,
+        "actual_bonus_delta": actual_bonus_delta,
         "followup_white_frequency": followup_white_frequency,
         "followup_bonus_frequency": followup_bonus_frequency,
         "followup_sample_size": followup_sample_size,
