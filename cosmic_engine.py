@@ -66,19 +66,26 @@ def get_moon_lucky_numbers(moon_data, max_num=69):
 # WESTERN ASTROLOGY
 # ============================================================
 
+# Base lucky numbers are the first five terms of each sign's own ruling
+# planet's Cheiro numerology cycle (see PLANET_NUMBERS below), keeping this
+# list internally consistent with the planet(s) named alongside it. Aquarius
+# and Pisces carry dual rulership -- their traditional ruler (Saturn,
+# Jupiter) plus their modern-astrology ruler expressed via the Vedic lunar
+# nodes (Rahu standing in for Uranus, Ketu for Neptune) -- so their base
+# numbers draw from the union of both cycles.
 ZODIAC_SIGNS = [
-    ('Aries', (3,21), (4,19), [1,9,19,28,37], 'Mars'),
-    ('Taurus', (4,20), (5,20), [2,6,15,24,33], 'Venus'),
-    ('Gemini', (5,21), (6,20), [5,14,23,32,41], 'Mercury'),
-    ('Cancer', (6,21), (7,22), [2,7,11,20,29], 'Moon'),
-    ('Leo', (7,23), (8,22), [1,5,10,19,28], 'Sun'),
-    ('Virgo', (8,23), (9,22), [3,6,14,23,32], 'Mercury'),
-    ('Libra', (9,23), (10,22), [6,15,24,33,42], 'Venus'),
-    ('Scorpio', (10,23), (11,21), [1,8,11,18,22], 'Mars'),
-    ('Sagittarius', (11,22), (12,21), [3,12,21,30,39], 'Jupiter'),
-    ('Capricorn', (12,22), (1,19), [1,4,13,22,31], 'Saturn'),
-    ('Aquarius', (1,20), (2,18), [4,8,13,22,31], 'Saturn'),
-    ('Pisces', (2,19), (3,20), [3,7,12,21,39], 'Jupiter'),
+    ('Aries', (3,21), (4,19), [9,18,27,36,45], ['Mars']),
+    ('Taurus', (4,20), (5,20), [6,15,24,33,42], ['Venus']),
+    ('Gemini', (5,21), (6,20), [5,14,23,32,41], ['Mercury']),
+    ('Cancer', (6,21), (7,22), [2,11,20,29,38], ['Moon']),
+    ('Leo', (7,23), (8,22), [1,10,19,28,37], ['Sun']),
+    ('Virgo', (8,23), (9,22), [5,14,23,32,41], ['Mercury']),
+    ('Libra', (9,23), (10,22), [6,15,24,33,42], ['Venus']),
+    ('Scorpio', (10,23), (11,21), [9,18,27,36,45], ['Mars']),
+    ('Sagittarius', (11,22), (12,21), [3,12,21,30,39], ['Jupiter']),
+    ('Capricorn', (12,22), (1,19), [8,17,26,35,44], ['Saturn']),
+    ('Aquarius', (1,20), (2,18), [4,8,13,17,22], ['Saturn', 'Rahu']),
+    ('Pisces', (2,19), (3,20), [3,7,12,16,21], ['Jupiter', 'Ketu']),
 ]
 
 PLANET_NUMBERS = {
@@ -89,28 +96,31 @@ PLANET_NUMBERS = {
     'Jupiter': [3,12,21,30,39,48,57,66],
     'Venus': [6,15,24,33,42,51,60,69],
     'Saturn': [8,17,26,35,44,53,62],
+    'Rahu': [4,13,22,31,40,49,58,67],
+    'Ketu': [7,16,25,34,43,52,61,70],
 }
 
 def get_sun_sign(birth_date):
     m, d = birth_date.month, birth_date.day
-    for sign, start, end, luckies, planet in ZODIAC_SIGNS:
+    for sign, start, end, luckies, planets in ZODIAC_SIGNS:
         sm, sd = start
         em, ed = end
         if (m == sm and d >= sd) or (m == em and d <= ed):
-            return {'sign': sign, 'lucky': luckies, 'planet': planet}
-    return {'sign': 'Capricorn', 'lucky': [1,4,13,22,31], 'planet': 'Saturn'}
+            return {'sign': sign, 'lucky': luckies, 'planets': planets}
+    return {'sign': 'Capricorn', 'lucky': [8,17,26,35,44], 'planets': ['Saturn']}
 
 def get_astro_lucky_numbers(sun_sign_data, max_num=69):
     numbers = set()
     base = sun_sign_data['lucky']
-    planet = sun_sign_data['planet']
+    planets = sun_sign_data['planets']
     for n in base:
         for mult in range(1, 5):
             if n * mult <= max_num:
                 numbers.add(n * mult)
-    for n in PLANET_NUMBERS.get(planet, []):
-        if n <= max_num:
-            numbers.add(n)
+    for planet in planets:
+        for n in PLANET_NUMBERS.get(planet, []):
+            if n <= max_num:
+                numbers.add(n)
     return numbers
 
 # ============================================================

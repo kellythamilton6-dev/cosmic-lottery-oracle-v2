@@ -754,7 +754,7 @@ const PLANET_NUMS = {
   'Venus':[6,15,24,33,42,51,60,69],
   'Saturn':[8,17,26,35,44,53,62],
   'Rahu':[4,13,22,31,40,49,58,67],
-  'Ketu':[7,16,25,34,43,52,61],
+  'Ketu':[7,16,25,34,43,52,61,70],
 };
 
 function getMoonBiasNumbers(bias) {
@@ -848,23 +848,25 @@ function moonSpecificReason(bias, n, phase, max) {
   return base;
 }
 
-function astroSpecificReason(n, sign, planet, signLucky) {
-  // Check direct planet number match first
-  const planetNums = PLANET_NUMS[planet] || [];
-  if(planetNums.includes(n))
-    return `${n} is a direct ${planet} number in Chaldean numerology — the same planetary ruler as your ${sign} sun sign. This is a primary resonance point, not a derived one.`;
+function astroSpecificReason(n, sign, planets, signLucky) {
+  const planetLabel = planets.join(' & ');
+  // Check direct planet number match first (either co-ruler qualifies)
+  const planetNums = new Set();
+  planets.forEach(p => (PLANET_NUMS[p]||[]).forEach(x => planetNums.add(x)));
+  if(planetNums.has(n))
+    return `${n} is a direct ${planetLabel} number in Chaldean numerology — the same planetary ruler as your ${sign} sun sign. This is a primary resonance point, not a derived one.`;
   // Check lucky number relationship
   const matchedLucky = signLucky.find(l => n===l);
   if(matchedLucky)
-    return `${n} is one of ${sign}'s core lucky numbers, ruled by ${planet}. It carries your sun sign's vibration in its most concentrated form.`;
+    return `${n} is one of ${sign}'s core lucky numbers, ruled by ${planetLabel}. It carries your sun sign's vibration in its most concentrated form.`;
   const matchedMultiple = signLucky.find(l => l>1 && n%l===0);
   if(matchedMultiple)
-    return `${n} = ${matchedMultiple} × ${n/matchedMultiple} — a harmonic multiple of your ${sign} lucky number ${matchedMultiple}. ${planet}'s influence radiates outward through these multiples into the broader number field.`;
+    return `${n} = ${matchedMultiple} × ${n/matchedMultiple} — a harmonic multiple of your ${sign} lucky number ${matchedMultiple}. ${planetLabel}'s influence radiates outward through these multiples into the broader number field.`;
   // Digit sum match
   const ds = digitSum(n);
-  if(planetNums.includes(ds))
-    return `${n}'s digit sum (${String(n).split('+').join('')} → ${ds}) reduces to ${ds}, a ${planet} number. Numerological reduction reveals the planetary frequency hidden within ${n}.`;
-  return `${n} falls within the ${planet}-influenced zone for ${sign} — its position in the number field carries your sun sign's structural energy.`;
+  if(planetNums.has(ds))
+    return `${n}'s digit sum (${String(n).split('+').join('')} → ${ds}) reduces to ${ds}, a ${planetLabel} number. Numerological reduction reveals the planetary frequency hidden within ${n}.`;
+  return `${n} falls within the ${planetLabel}-influenced zone for ${sign} — its position in the number field carries your sun sign's structural energy.`;
 }
 
 function vedicSpecificReason(n, nakshatra, nakshatraRuler, nakshatraNumbers) {
@@ -921,7 +923,8 @@ function explainNumbers(result) {
   const nakshatraRuler = result.nakshatra[1];
   const nakshatraNumbers = result.nakshatra[2] || [];
   const lifePath = result.life_path;
-  const planet = result.sun_sign.planet;
+  const planets = result.sun_sign.planets || [];
+  const planetLabel = planets.join(' & ');
   const signLucky = result.sun_sign.lucky || [];
   const bias = result.moon.bias;
   const maxNum = result.game === 'megamillions' ? 70 : 69;
@@ -937,7 +940,7 @@ function explainNumbers(result) {
     const tags = [];
 
     const isMoon = moonTierFit(bias, num, maxNum);
-    const isAstro = signLucky.some(l=>num%l===0||num===l) || (PLANET_NUMS[planet]||[]).includes(num) || (PLANET_NUMS[planet]||[]).includes(digitSum(num));
+    const isAstro = signLucky.some(l=>num%l===0||num===l) || planets.some(p => (PLANET_NUMS[p]||[]).includes(num) || (PLANET_NUMS[p]||[]).includes(digitSum(num)));
     const isVedic = vedicNums.has(num) || (PLANET_NUMS[nakshatraRuler]||[]).includes(digitSum(num));
     const isNum = num===lifePath || num%lifePath===0 || digitSum(num)===lifePath || (num+lifePath)%9===0;
 
@@ -946,7 +949,7 @@ function explainNumbers(result) {
       tags.push('<span class="badge badge-moon">Moon</span>');
     }
     if(isAstro) {
-      reasons.push(`<span style="color:#F0B84A;">☀ ${sign} / ${planet}:</span> ${astroSpecificReason(num, sign, planet, signLucky)}`);
+      reasons.push(`<span style="color:#F0B84A;">☀ ${sign} / ${planetLabel}:</span> ${astroSpecificReason(num, sign, planets, signLucky)}`);
       tags.push('<span class="badge badge-astro">Astrology</span>');
     }
     if(isVedic) {
@@ -1042,7 +1045,8 @@ function explainAltSet(numbers, bonus, result, label, color, containerId) {
   const nakshatraRuler = result.nakshatra[1];
   const nakshatraNumbers = result.nakshatra[2] || [];
   const lifePath = result.life_path;
-  const planet = result.sun_sign.planet;
+  const planets = result.sun_sign.planets || [];
+  const planetLabel = planets.join(' & ');
   const signLucky = result.sun_sign.lucky || [];
   const bias = result.moon.bias;
 
@@ -1066,11 +1070,11 @@ function explainAltSet(numbers, bonus, result, label, color, containerId) {
     const reasons = [];
     const tags = [];
     const isMoon = moonTierFit(bias, num, maxNum);
-    const isAstro = signLucky.some(l=>num%l===0||num===l)||(PLANET_NUMS[planet]||[]).includes(num)||(PLANET_NUMS[planet]||[]).includes(digitSum(num));
+    const isAstro = signLucky.some(l=>num%l===0||num===l)||planets.some(p => (PLANET_NUMS[p]||[]).includes(num)||(PLANET_NUMS[p]||[]).includes(digitSum(num)));
     const isVedic = vedicNums.has(num)||(PLANET_NUMS[nakshatraRuler]||[]).includes(digitSum(num));
     const isNum = num===lifePath||num%lifePath===0||digitSum(num)===lifePath||(num+lifePath)%9===0;
     if(isMoon){ reasons.push(`<span style="color:#A99FF8;">🌒 Moon — ${moonPhase}:</span> ${moonSpecificReason(bias, num, moonPhase, maxNum)}`); tags.push('<span class="badge badge-moon">Moon</span>'); }
-    if(isAstro){ reasons.push(`<span style="color:#F0B84A;">☀ ${sign} / ${planet}:</span> ${astroSpecificReason(num, sign, planet, signLucky)}`); tags.push('<span class="badge badge-astro">Astrology</span>'); }
+    if(isAstro){ reasons.push(`<span style="color:#F0B84A;">☀ ${sign} / ${planetLabel}:</span> ${astroSpecificReason(num, sign, planets, signLucky)}`); tags.push('<span class="badge badge-astro">Astrology</span>'); }
     if(isVedic){ reasons.push(`<span style="color:#5FD9AE;">☽ ${nakshatra} nakshatra:</span> ${vedicSpecificReason(num, nakshatra, nakshatraRuler, nakshatraNumbers)}`); tags.push('<span class="badge badge-vedic">Vedic</span>'); }
     if(isNum){ reasons.push(`<span style="color:#F08E6A;">◆ Life Path ${lifePath}:</span> ${numerologySpecificReason(num, lifePath)}`); tags.push('<span class="badge badge-num">Numerology</span>'); }
     if(reasons.length===0){ const ds=digitSum(num); reasons.push(`<span style="color:#5FD9AE;">☽ ${nakshatra} nakshatra:</span> ${num} (digit sum ${ds}) emerges from the weighted probability field under ${nakshatra}. Its digit resonance of ${ds} aligns with ${nakshatraRuler}'s broader influence.`); tags.push('<span class="badge badge-vedic">Vedic</span>'); }
