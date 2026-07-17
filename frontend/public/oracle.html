@@ -384,7 +384,7 @@
       <h2>🔍 Pattern Recognition Dashboard</h2>
       <p class="sub">10-system statistical analysis — frequency · gaps · pairs · clusters · Markov · delta · moon · cyclical · positional · balance</p>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <select id="pattern-game" style="width:auto;">
+        <select id="pattern-analysis-game" style="width:auto;" onchange="runPatternAnalysis()">
           <option value="powerball">Powerball</option>
           <option value="megamillions">Mega Millions</option>
         </select>
@@ -1422,7 +1422,7 @@ function showPanel(name, btn) {
 const MOON_ICONS_P = {'New Moon':'🌑','Waxing Crescent':'🌒','First Quarter':'🌓','Waxing Gibbous':'🌔','Full Moon':'🌕','Waning Gibbous':'🌖','Last Quarter':'🌗','Waning Crescent':'🌘'};
 
 async function runPatternAnalysis() {
-  const game = document.getElementById('pattern-game').value;
+  const game = document.getElementById('pattern-analysis-game').value;
   const btn = document.getElementById('pattern-btn');
   btn.innerHTML = '<span class="loader"></span>Analyzing...';
   btn.disabled = true;
