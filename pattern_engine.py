@@ -489,6 +489,23 @@ def pattern_predict(game='powerball', confidence_weight=True, weights=None):
 
     top_confidence = sorted(confidence.items(), key=lambda x: x[1], reverse=True)
 
+    hot_numbers = freq['hot'][:10]
+    cold_numbers = freq['cold'][:10]
+    most_overdue = sorted(
+        [n for n in range(1, max_num + 1) if gaps[n]['overdue']],
+        key=lambda n: gaps[n]['overdue_score'],
+        reverse=True
+    )[:10]
+
+    game_label = 'Mega Millions' if game == 'megamillions' else 'Powerball'
+    analysis = (
+        f"Analyzed {len(draws)} {game_label} draws. "
+        f"Average sum per draw: {balance['avg_sum']} (±{balance['std_sum']}). "
+        f"Typical odd/even split: {balance['recommended_odd_even']}. "
+        f"High/low split: {balance['recommended_high_low']}. "
+        f"Moon phase today: {current_phase}."
+    )
+
     return {
         'game': game,
         'total_draws': len(draws),
@@ -500,6 +517,10 @@ def pattern_predict(game='powerball', confidence_weight=True, weights=None):
         'bonus_alt_b': pick_bonus(),
         'confidence_scores': confidence,
         'top_20_by_confidence': [{'number': n, 'score': s} for n, s in top_confidence[:20]],
+        'hot_numbers': hot_numbers,
+        'cold_numbers': cold_numbers,
+        'most_overdue': most_overdue,
+        'analysis': analysis,
         'balance': balance,
         'frequency': freq,
         'gaps': {str(k): v for k, v in gaps.items()},
