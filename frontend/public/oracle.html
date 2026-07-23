@@ -1188,22 +1188,34 @@ function displayPatternResults(r) {
   const hot = top20.slice(0, 7).map(x => x.number);
   const sumCheck = r.sum_check || {};
 
+  const hotNums = r.hot_numbers || hot;
+  const coldNums = r.cold_numbers || [];
+  const overdue = r.most_overdue || [];
+  const analysisText = r.analysis || `Analyzed ${r.total_draws} draws using the 10-system pattern engine.`;
+
   document.getElementById('r-reading').innerHTML = `
-    <div style="margin-bottom:12px;">Numbers selected by the 10-system pattern engine. Sum: <strong>${sumCheck.primary_sum || '—'}</strong> ${sumCheck.in_optimal_range ? '<span style="color:#5FD9AE;">✓ optimal</span>' : '<span style="color:#F08E6A;">outside optimal range</span>'}. Moon phase today: <strong>${r.current_moon_phase || '—'}</strong>.</div>
-    <div class="grid3" style="margin-top:12px;">
+    <div style="margin-bottom:12px;font-size:13px;color:var(--text2);line-height:1.6;">${analysisText}</div>
+    <div style="background:var(--bg2);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:13px;">
+      <span>Sum: <strong style="color:${sumCheck.in_optimal_range?'#5FD9AE':'#F08E6A'}">${sumCheck.primary_sum || '—'} ${sumCheck.in_optimal_range ? '✓' : '(outside optimal)'}</strong></span>
+      <span>Optimal range: <strong>${(r.balance||{}).optimal_sum_range ? r.balance.optimal_sum_range.join('–') : '—'}</strong></span>
+      <span>Odd/Even: <strong>${(r.balance||{}).recommended_odd_even||'—'}</strong></span>
+      <span>High/Low: <strong>${(r.balance||{}).recommended_high_low||'—'}</strong></span>
+    </div>
+    <div class="grid3" style="margin-top:4px;">
       <div style="background:var(--bg2);border-radius:8px;padding:12px;">
-        <div style="font-size:11px;color:#F08E6A;font-weight:600;margin-bottom:6px;">🔥 TOP CONFIDENCE</div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;">${hot.map(n=>`<span style="background:rgba(216,90,48,0.2);color:#F08E6A;padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;">${n}</span>`).join('')}</div>
+        <div style="font-size:11px;color:#F08E6A;font-weight:600;margin-bottom:6px;">🔥 HOT NUMBERS</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${hotNums.map(n=>`<span style="background:rgba(216,90,48,0.2);color:#F08E6A;padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;">${n}</span>`).join('')}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:6px;">Most frequent in historical draws</div>
       </div>
       <div style="background:var(--bg2);border-radius:8px;padding:12px;">
-        <div style="font-size:11px;color:#A99FF8;font-weight:600;margin-bottom:6px;">📊 RECOMMENDED MIX</div>
-        <div style="font-size:13px;color:var(--text2);">Odd/Even: <strong style="color:var(--text)">${(r.balance||{}).recommended_odd_even||'—'}</strong></div>
-        <div style="font-size:13px;color:var(--text2);margin-top:4px;">High/Low: <strong style="color:var(--text)">${(r.balance||{}).recommended_high_low||'—'}</strong></div>
+        <div style="font-size:11px;color:#A99FF8;font-weight:600;margin-bottom:6px;">❄ COLD NUMBERS</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${coldNums.map(n=>`<span style="background:rgba(83,74,183,0.2);color:#A99FF8;padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;">${n}</span>`).join('')}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:6px;">Least frequent — due for a comeback</div>
       </div>
       <div style="background:var(--bg2);border-radius:8px;padding:12px;">
-        <div style="font-size:11px;color:#5FD9AE;font-weight:600;margin-bottom:6px;">🎯 OPTIMAL SUM</div>
-        <div style="font-size:13px;color:var(--text2);">Range: <strong style="color:var(--text)">${(r.balance||{}).optimal_sum_range ? r.balance.optimal_sum_range.join('–') : '—'}</strong></div>
-        <div style="font-size:13px;color:var(--text2);margin-top:4px;">Draws: <strong style="color:var(--text)">${r.total_draws}</strong></div>
+        <div style="font-size:11px;color:#5FD9AE;font-weight:600;margin-bottom:6px;">⏰ MOST OVERDUE</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${overdue.map(n=>`<span style="background:rgba(29,158,117,0.2);color:#5FD9AE;padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;">${n}</span>`).join('')}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:6px;">Past their average gap — statistically due</div>
       </div>
     </div>`;
   document.getElementById('results').style.display = 'block';
