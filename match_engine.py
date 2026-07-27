@@ -39,9 +39,12 @@ def load_all_draws(game):
     `id - 1` / `id + 1` is literally the previous/next drawing.
 
     id numbering is always based on this full sequence, never on a
-    toggle-filtered subset, so a given draw_id means the same draw and
-    previous/next-drawing context reflects literal chronological reality
+    toggle-filtered subset, so a given draw_id always means the same draw,
     regardless of whether Double Play is eligible as a *match* elsewhere.
+    Previous/next-drawing context (see `_neighbor`) walks this sequence but
+    skips over the other game type, so a main drawing's neighbors are always
+    other main drawings and a Double Play drawing's neighbors are always
+    other Double Play drawings.
     """
     cfg = _config(game)
     with engine.connect() as conn:
@@ -103,9 +106,18 @@ def similarity_score(a, b, max_num):
     return round(max(0.0, 1.0 - weighted) * 100, 1)
 
 
-def _neighbor(draws, target_id, delta):
+def _neighbor(draws, target_id, delta, same_type_as=None):
+    """Walk from target_id in `delta` direction. If `same_type_as` is given
+    (an is_double_play bool), skip over rows of the other type so the
+    result is the next/previous drawing of the SAME game -- main follows
+    main, Double Play follows Double Play -- rather than the literal next
+    row in the shared table, which could be the other type."""
     idx = target_id + delta
-    return draws[idx] if 0 <= idx < len(draws) else None
+    while 0 <= idx < len(draws):
+        if same_type_as is None or draws[idx]["is_double_play"] == same_type_as:
+            return draws[idx]
+        idx += delta
+    return None
 
 
 def _positional_averages(matches):
@@ -196,9 +208,11 @@ def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, li
     that aren't part of the historical sequence. `include_secondary`
     controls whether Powerball Double Play draws are eligible to appear as
     *matches*; ignored for Mega Millions, which has no secondary drawing.
-    Previous/next-drawing context always reflects the literal chronological
-    sequence (Double Play included) regardless of this flag, since that's
-    reporting what actually happened next, not proposing a match.
+    Previous/next-drawing context is independent of this flag -- it always
+    reports the next/previous drawing of the SAME type as the match itself
+    (main follows main, Double Play follows Double Play), since that's
+    reporting what actually happened next for that game, not proposing a
+    match.
     """
     cfg = _config(game)
     max_num = cfg["max_num"]
@@ -232,14 +246,14 @@ def pattern_match(game, draw_id=None, custom_numbers=None, custom_bonus=None, li
     top = scored[:limit]
 
     for m in top:
-        m["previous_drawing"] = _neighbor(draws, m["id"], -1)
-        m["next_drawing"] = _neighbor(draws, m["id"], 1)
+        m["previous_drawing"] = _neighbor(draws, m["id"], -1, same_type_as=m["is_double_play"])
+        m["next_drawing"] = _neighbor(draws, m["id"], 1, same_type_as=m["is_double_play"])
 
     # The target's own neighbors -- id=-1 (custom numbers) isn't part of the
     # sequence, so _neighbor's id+1 arithmetic would wrongly resolve to
     # draws[0] there; guard it explicitly.
-    target_next_drawing = _neighbor(draws, target["id"], 1) if target["id"] >= 0 else None
-    target_previous_drawing = _neighbor(draws, target["id"], -1) if target["id"] >= 0 else None
+    target_next_drawing = _neighbor(draws, target["id"], 1, same_type_as=target["is_double_play"]) if target["id"] >= 0 else None
+    target_previous_drawing = _neighbor(draws, target["id"], -1, same_type_as=target["is_double_play"]) if target["id"] >= 0 else None
 
     positional_averages, bonus_positional_average, positional_sample_size = _positional_averages(top)
     baseline_positional_averages, baseline_bonus_positional_average = _baseline_positional_averages(candidate_pool)

@@ -12,31 +12,33 @@ engine = create_engine(DB_URL)
 # DATA LOADER
 # ============================================================
 
-def load_draws(game='powerball', limit=None):
+def load_draws(game='powerball', limit=None, draw_type='main'):
+    """`draw_type` selects a single homogeneous stream -- 'main' (regular
+    drawing) or 'doubleplay' (Powerball Double Play, drawn separately right
+    after the main numbers). Mega Millions has no Double Play, so draw_type
+    is ignored for it. Every downstream metric (frequency, Markov, gaps,
+    positional, ...) runs against whichever single stream is selected here,
+    so main and Double Play are never blended into one sequence -- a main
+    draw's "next draw" is always another main draw, never that night's
+    Double Play, and vice versa."""
     if game == 'megamillions':
         table = 'megamillions_draws'
         bonus_col = 'megaball'
+        game_value = 'megamillions'
     else:
         table = 'powerball_draws'
         bonus_col = 'powerball'
+        game_value = 'powerball_doubleplay' if draw_type == 'doubleplay' else 'powerball'
     limit_clause = f'LIMIT {limit}' if limit else ''
     with engine.connect() as conn:
-        if bonus_col:
-            result = conn.execute(text(f"""
-                SELECT draw_date, n1, n2, n3, n4, n5, {bonus_col}
-                FROM {table}
-                ORDER BY draw_date DESC {limit_clause}
-            """))
-            rows = result.fetchall()
-            return [{'date': str(r[0]), 'numbers': sorted([r[1],r[2],r[3],r[4],r[5]]), 'bonus': r[6]} for r in rows]
-        else:
-            result = conn.execute(text(f"""
-                SELECT draw_date, n1, n2, n3, n4, n5
-                FROM {table}
-                ORDER BY draw_date DESC {limit_clause}
-            """))
-            rows = result.fetchall()
-            return [{'date': str(r[0]), 'numbers': sorted([r[1],r[2],r[3],r[4],r[5]]), 'bonus': None} for r in rows]
+        result = conn.execute(text(f"""
+            SELECT draw_date, n1, n2, n3, n4, n5, {bonus_col}
+            FROM {table}
+            WHERE game = :game_value
+            ORDER BY draw_date DESC {limit_clause}
+        """), {"game_value": game_value})
+        rows = result.fetchall()
+        return [{'date': str(r[0]), 'numbers': sorted([r[1],r[2],r[3],r[4],r[5]]), 'bonus': r[6]} for r in rows]
 
 # ============================================================
 # 1. FREQUENCY ANALYSIS
@@ -363,12 +365,14 @@ def cluster_analysis(draws, max_num=69):
 # MASTER PREDICTION FUNCTION
 # ============================================================
 
-def pattern_predict(game='powerball', confidence_weight=True, weights=None):
+def pattern_predict(game='powerball', confidence_weight=True, weights=None, draw_type='main'):
     """
     weights: dict with keys frequency, overdue, trend, moon, pairs
              each 0.0–1.0, will be normalized to sum to 1.0
+    draw_type: 'main' or 'doubleplay' (Powerball only) -- see load_draws.
     """
-    draws = load_draws(game)
+    draw_type = draw_type if (draw_type == 'doubleplay' and game != 'megamillions') else 'main'
+    draws = load_draws(game, draw_type=draw_type)
     if not draws:
         return {'error': 'No historical data found'}
 
@@ -508,6 +512,7 @@ def pattern_predict(game='powerball', confidence_weight=True, weights=None):
 
     return {
         'game': game,
+        'draw_type': draw_type,
         'total_draws': len(draws),
         'primary': primary,
         'alt_a': alt_a,

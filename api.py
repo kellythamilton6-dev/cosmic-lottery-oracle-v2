@@ -96,6 +96,7 @@ class PredictionRequest(BaseModel):
     draw_date: Optional[str] = None
     name: Optional[str] = ""
     game: Optional[str] = "powerball"
+    draw_type: Optional[str] = "main"
     w_moon: Optional[float] = 0.30
     w_astro: Optional[float] = 0.25
     w_vedic: Optional[float] = 0.25
@@ -618,7 +619,7 @@ def predict_historical(req: PredictionRequest):
 def pattern_analysis(req: PredictionRequest):
     try:
         from pattern_engine import pattern_predict
-        result = pattern_predict(req.game or 'powerball')
+        result = pattern_predict(req.game or 'powerball', draw_type=req.draw_type or 'main')
         return {"success": True, "result": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

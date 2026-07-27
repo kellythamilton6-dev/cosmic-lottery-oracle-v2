@@ -384,9 +384,13 @@
       <h2>🔍 Pattern Recognition Dashboard</h2>
       <p class="sub">10-system statistical analysis — frequency · gaps · pairs · clusters · Markov · delta · moon · cyclical · positional · balance</p>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <select id="pattern-analysis-game" style="width:auto;" onchange="runPatternAnalysis()">
+        <select id="pattern-analysis-game" style="width:auto;" onchange="paOnGameChange()">
           <option value="powerball">Powerball</option>
           <option value="megamillions">Mega Millions</option>
+        </select>
+        <select id="pattern-analysis-drawtype" style="width:auto;" onchange="runPatternAnalysis()">
+          <option value="main">Main draws</option>
+          <option value="doubleplay">Double Play draws</option>
         </select>
         <button class="btn btn-primary" onclick="runPatternAnalysis()" id="pattern-btn">🔍 Run Analysis</button>
         <span id="pattern-last-run" style="font-size:12px;color:var(--text2);"></span>
@@ -1433,8 +1437,19 @@ function showPanel(name, btn) {
 
 const MOON_ICONS_P = {'New Moon':'🌑','Waxing Crescent':'🌒','First Quarter':'🌓','Waxing Gibbous':'🌔','Full Moon':'🌕','Waning Gibbous':'🌖','Last Quarter':'🌗','Waning Crescent':'🌘'};
 
+function paOnGameChange() {
+  const game = document.getElementById('pattern-analysis-game').value;
+  const drawTypeSel = document.getElementById('pattern-analysis-drawtype');
+  // Mega Millions has no Double Play drawing -- force back to Main and
+  // disable the option rather than silently ignoring the selection.
+  drawTypeSel.querySelector('option[value="doubleplay"]').disabled = (game === 'megamillions');
+  if (game === 'megamillions') drawTypeSel.value = 'main';
+  runPatternAnalysis();
+}
+
 async function runPatternAnalysis() {
   const game = document.getElementById('pattern-analysis-game').value;
+  const drawType = document.getElementById('pattern-analysis-drawtype').value;
   const btn = document.getElementById('pattern-btn');
   btn.innerHTML = '<span class="loader"></span>Analyzing...';
   btn.disabled = true;
@@ -1451,7 +1466,7 @@ async function runPatternAnalysis() {
     const res = await fetch(`${API}/pattern-analysis`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ birth_date: '1985-01-01', game })
+      body: JSON.stringify({ birth_date: '1985-01-01', game, draw_type: drawType })
     });
     const data = await res.json();
     clearInterval(stepInterval);
@@ -1459,7 +1474,8 @@ async function runPatternAnalysis() {
     overlay.style.display = 'none';
     if(data.success) {
       renderPatternDashboard(data.result);
-      document.getElementById('pattern-last-run').textContent = `Last run: ${new Date().toLocaleTimeString()} · ${data.result.total_draws} draws`;
+      const drawTypeLabel = drawType === 'doubleplay' ? 'Double Play' : 'Main';
+      document.getElementById('pattern-last-run').textContent = `Last run: ${new Date().toLocaleTimeString()} · ${drawTypeLabel} · ${data.result.total_draws} draws`;
     } else {
       document.getElementById('pattern-results').innerHTML = '<div class="alert alert-error">Analysis failed — check API is running</div>';
     }
