@@ -253,20 +253,24 @@ def delta_analysis(draws):
 
 def moon_phase_correlation(draws):
     try:
-        import ephem
-        import math as m
+        from cosmic_engine import get_moon_phase
+        from datetime import datetime
         phase_nums = defaultdict(list)
         phases = ['New Moon','Waxing Crescent','First Quarter','Waxing Gibbous',
                   'Full Moon','Waning Gibbous','Last Quarter','Waning Crescent']
 
+        # Reuses get_moon_phase's exact boundary convention (centered on each
+        # phase's exact moment, e.g. Full Moon = position 0.4375-0.5625)
+        # instead of reimplementing phase-bucketing here. The two used to
+        # diverge -- this used a "starts at" convention (New Moon =
+        # 0-0.125) instead of a centered one, so ~44% of dates got a
+        # different phase label here than the one pattern_predict looks up
+        # via get_moon_phase() for "today's phase", silently pulling the
+        # wrong historical bucket for the moon-phase confidence bonus.
         for draw in draws:
             try:
-                d = ephem.Date(draw['date'].replace('-','/'))
-                nnm = ephem.next_new_moon(d)
-                pnm = ephem.previous_new_moon(d)
-                pos = (d - pnm) / (nnm - pnm)
-                idx = min(int(pos * 8), 7)
-                phase = phases[idx]
+                d = datetime.strptime(draw['date'], '%Y-%m-%d').date()
+                phase = get_moon_phase(d)['phase']
                 phase_nums[phase].extend(draw['numbers'])
             except:
                 continue
