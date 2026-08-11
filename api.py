@@ -505,12 +505,21 @@ def predict_historical(req: PredictionRequest):
         table = get_table(req.game)
         bonus_col = get_bonus_col(req.game)
 
+        # No WHERE filter here meant Main and Double Play draws were always
+        # blended together, unlike pattern_engine.py's load_draws() (fixed
+        # earlier) which keeps them as separate homogeneous streams. Mega
+        # Millions has no Double Play, so draw_type is forced back to
+        # 'main' for it regardless of what was requested.
+        draw_type = req.draw_type if (req.draw_type == 'doubleplay' and req.game != 'megamillions') else 'main'
+        game_value = f"{req.game}_doubleplay" if draw_type == 'doubleplay' else req.game
+
         with engine.connect() as conn:
             result = conn.execute(text(f"""
                 SELECT draw_date, n1, n2, n3, n4, n5, {bonus_col}
                 FROM {table}
+                WHERE game = :game_value
                 ORDER BY draw_date DESC
-            """))
+            """), {"game_value": game_value})
             rows = result.fetchall()
 
         if not rows:
@@ -604,6 +613,7 @@ def predict_historical(req: PredictionRequest):
                 "bonus_alt_a": bonus_alt_a,
                 "bonus_alt_b": bonus_alt_b,
                 "game": req.game,
+                "draw_type": draw_type,
                 "draw_date": req.draw_date or str(date.today()),
                 "total_draws_analyzed": total_draws,
                 "hot_numbers": hot,
