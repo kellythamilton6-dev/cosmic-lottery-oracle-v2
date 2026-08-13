@@ -343,15 +343,21 @@
     <!-- Validate -->
     <div class="card" style="margin-bottom:16px;">
       <h2>✓ Validate a prediction</h2>
-      <p class="sub">Enter the actual winning numbers to score a saved prediction</p>
-      <div class="grid2" style="margin-bottom:12px;">
-        <div><label>Select prediction</label>
-          <select id="pred-select"><option value="">— save predictions first —</option></select>
-        </div>
-        <div><label>Actual winning numbers (comma or space separated)</label>
-          <input type="text" id="actual-nums" placeholder="e.g. 7 14 22 38 45">
-        </div>
+      <p class="sub">Select a prediction — we'll look up the actual drawn numbers automatically</p>
+      <div style="margin-bottom:12px;">
+        <label>Select prediction</label>
+        <select id="pred-select" onchange="autoFillDrawnNumbers()" style="width:100%;"><option value="">— save predictions first —</option></select>
       </div>
+      <div id="drawn-lookup" style="display:none;background:var(--bg2);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">ACTUAL DRAWN NUMBERS</div>
+        <div id="drawn-balls" class="balls-row" style="margin-bottom:6px;"></div>
+        <div id="drawn-status" style="font-size:12px;color:var(--text2);"></div>
+      </div>
+      <div id="drawn-not-found" style="display:none;background:var(--bg2);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+        <div style="font-size:13px;color:var(--text2);">No draw found for this date — enter numbers manually:</div>
+        <input type="text" id="actual-nums" placeholder="e.g. 7 14 22 38 45" style="margin-top:8px;width:100%;">
+      </div>
+      <input type="hidden" id="actual-nums-auto">
       <button class="btn btn-primary" onclick="validatePrediction()">Check accuracy</button>
       <div id="val-result" style="margin-top:12px;"></div>
     </div>
@@ -1363,31 +1369,74 @@ function updatePredList() {
   ).join('');
 }
 
+async function autoFillDrawnNumbers() {
+  const idx = document.getElementById('pred-select').value;
+  const drawnLookup = document.getElementById('drawn-lookup');
+  const drawnNotFound = document.getElementById('drawn-not-found');
+  const drawnBalls = document.getElementById('drawn-balls');
+  const drawnStatus = document.getElementById('drawn-status');
+  document.getElementById('actual-nums-auto').value = '';
+  document.getElementById('val-result').innerHTML = '';
+  drawnLookup.style.display = 'none';
+  drawnNotFound.style.display = 'none';
+  if(idx === '') return;
+
+  const pred = savedPredictions[parseInt(idx)];
+  drawnStatus.textContent = 'Looking up draw results…';
+  drawnLookup.style.display = 'block';
+  drawnBalls.innerHTML = '<span style="color:var(--text2);font-size:13px;">Loading…</span>';
+
+  try {
+    const res = await fetch(`${API}/draw/${pred.game}/${pred.draw_date}`);
+    const data = await res.json();
+    if(!data.success) {
+      drawnLookup.style.display = 'none';
+      drawnNotFound.style.display = 'block';
+      return;
+    }
+    // Render balls
+    const predNums = pred.primary || [];
+    drawnBalls.innerHTML = data.numbers.map(n => {
+      const matched = predNums.includes(n);
+      return `<span class="ball ${matched ? 'ball-teal' : 'ball-purple'}" style="width:34px;height:34px;font-size:13px;${matched?'box-shadow:0 0 0 2px #5FD9AE;':''}">${n}</span>`;
+    }).join('') + `<span style="color:var(--text2);margin:0 4px;">+</span><span class="ball ball-coral" style="width:34px;height:34px;font-size:13px;">${data.bonus}</span>`;
+    const matchCount = data.numbers.filter(n => predNums.includes(n)).length;
+    drawnStatus.innerHTML = `Draw date: <strong>${data.date}</strong> · <span style="color:#5FD9AE;font-weight:600;">${matchCount} number${matchCount!==1?'s':''} matched</span> (teal = matched your prediction)`;
+    document.getElementById('actual-nums-auto').value = data.numbers.join(',');
+  } catch(e) {
+    drawnLookup.style.display = 'none';
+    drawnNotFound.style.display = 'block';
+  }
+}
+
 async function validatePrediction() {
   const idx = document.getElementById('pred-select').value;
-  const actual = document.getElementById('actual-nums').value;
-  if(idx===''||!actual) { document.getElementById('val-result').innerHTML='<div class="alert alert-error">Please select a prediction and enter actual numbers.</div>'; return; }
+  if(idx === '') { document.getElementById('val-result').innerHTML='<div class="alert alert-error">Please select a prediction.</div>'; return; }
   if(!authToken) { document.getElementById('val-result').innerHTML='<div class="alert alert-error">Please sign in to validate predictions.</div>'; return; }
   const pred = savedPredictions[parseInt(idx)];
-  const actualNums = actual.split(/[,\s]+/).map(Number).filter(n=>n>0);
+
+  // Use auto-filled numbers if available, fall back to manual input
+  const autoNums = document.getElementById('actual-nums-auto').value;
+  const manualNums = (document.getElementById('actual-nums') || {}).value || '';
+  const numsStr = autoNums || manualNums;
+  if(!numsStr) { document.getElementById('val-result').innerHTML='<div class="alert alert-error">No drawn numbers found — enter them manually.</div>'; return; }
+
+  const actualNums = numsStr.split(/[,\s]+/).map(Number).filter(n=>n>0);
   try {
     const res = await fetch(`${API}/validate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
-      },
-      body: JSON.stringify({
-        prediction_id: pred.id,
-        actual_numbers: actualNums.join(','),
-        actual_bonus: null
-      })
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+      body: JSON.stringify({ prediction_id: pred.id, actual_numbers: actualNums.join(','), actual_bonus: null })
     });
     const data = await res.json();
     if(!data.success) throw new Error('Validate failed');
     await loadPredictions();
-    document.getElementById('val-result').innerHTML = `<div class="alert alert-success">Matched <strong>${data.matches}</strong> of ${pred.primary.length} numbers!${data.matches>0?' Matched: '+pred.primary.filter(n=>actualNums.includes(n)).join(', '):''}</div>`;
-  } catch (e) {
+    const matched = pred.primary.filter(n => actualNums.includes(n));
+    document.getElementById('val-result').innerHTML = `<div class="alert alert-success">
+      Matched <strong>${data.matches}</strong> of ${pred.primary.length} numbers!
+      ${data.matches > 0 ? `<br>Matched numbers: <strong>${matched.join(', ')}</strong>` : ''}
+    </div>`;
+  } catch(e) {
     document.getElementById('val-result').innerHTML = '<div class="alert alert-error">Validation failed. Please try again.</div>';
   }
 }
