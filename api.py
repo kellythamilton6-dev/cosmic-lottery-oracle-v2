@@ -255,6 +255,31 @@ def sync_draws():
 def root():
     return {"message": "✦ Cosmic Lottery Oracle API is running!"}
 
+@app.get("/draw/{game}/{draw_date}")
+def get_draw_by_date(game: str, draw_date: str):
+    """Look up the actual winning numbers for a specific game and draw date."""
+    table = 'megamillions_draws' if game == 'megamillions' else 'powerball_draws'
+    bonus_col = 'megaball' if game == 'megamillions' else 'powerball'
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text(f"""
+                SELECT n1, n2, n3, n4, n5, {bonus_col}
+                FROM {table}
+                WHERE draw_date = :d
+                ORDER BY id DESC LIMIT 1
+            """), {"d": draw_date}).fetchone()
+        if not row:
+            return {"success": False, "error": f"No {game} draw found for {draw_date}"}
+        return {
+            "success": True,
+            "game": game,
+            "date": draw_date,
+            "numbers": sorted([row[0], row[1], row[2], row[3], row[4]]),
+            "bonus": row[5]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/moon")
 def moon_today():
     phase = get_moon_phase(date.today())
