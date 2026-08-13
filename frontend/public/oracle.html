@@ -338,6 +338,40 @@
         <p class="sub">Which weight settings produced the most matches across validated predictions</p>
         <div id="acc-top-influences" style="margin-top:12px;color:var(--text2);font-size:14px;">Validate predictions to see influence performance.</div>
       </div>
+
+      <!-- Consensus heatmap -->
+      <div class="card" style="margin-bottom:16px;">
+        <h2>🔥 Number consensus heatmap</h2>
+        <p class="sub">How often each number appears across all your saved predictions — brighter = recommended more consistently</p>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;" id="heatmap-filters">
+          <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="radio" name="hm-game" value="all" checked onchange="renderConsensusHeatmap()"> All games
+          </label>
+          <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="radio" name="hm-game" value="powerball" onchange="renderConsensusHeatmap()"> Powerball only
+          </label>
+          <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="radio" name="hm-game" value="megamillions" onchange="renderConsensusHeatmap()"> Mega Millions only
+          </label>
+          <span style="width:1px;background:var(--border);margin:0 4px;"></span>
+          <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="radio" name="hm-mode" value="all" checked onchange="renderConsensusHeatmap()"> All modes
+          </label>
+          <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="radio" name="hm-mode" value="cosmic" onchange="renderConsensusHeatmap()"> Cosmic only
+          </label>
+          <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="radio" name="hm-mode" value="pattern" onchange="renderConsensusHeatmap()"> Historical only
+          </label>
+        </div>
+        <div id="consensus-heatmap" style="color:var(--text2);font-size:14px;">Save predictions to see your number consensus heatmap.</div>
+        <div id="heatmap-legend" style="display:none;margin-top:14px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;">TOP RECURRING NUMBERS</div>
+          <div id="heatmap-top" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+          <div style="margin-top:12px;font-size:11px;color:var(--text2);margin-bottom:4px;">NEVER RECOMMENDED</div>
+          <div id="heatmap-cold" style="font-size:12px;color:var(--text2);"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Validate -->
@@ -1341,6 +1375,9 @@ function updatePredList() {
         }).join('');
   document.getElementById('acc-top-influences').innerHTML = influenceHtml;
 
+  // Consensus heatmap
+  renderConsensusHeatmap();
+
   // Prediction list
   el.innerHTML = savedPredictions.map((p,i) => {
     const modeLabel = (p.mode||'cosmic') === 'cosmic' ? '🔮 Cosmic' : '📊 Historical';
@@ -1367,6 +1404,85 @@ function updatePredList() {
   sel.innerHTML = savedPredictions.map((p,i) =>
     `<option value="${i}">${p.draw_date} · ${(p.mode||'cosmic')==='cosmic'?'🔮':'📊'} · ${p.primary.join('-')}${p.bonus?'+'+p.bonus:''}</option>`
   ).join('');
+}
+
+function renderConsensusHeatmap() {
+  const gameFilter = document.querySelector('input[name="hm-game"]:checked')?.value || 'all';
+  const modeFilter = document.querySelector('input[name="hm-mode"]:checked')?.value || 'all';
+
+  const preds = savedPredictions.filter(p => {
+    if(gameFilter !== 'all' && p.game !== gameFilter) return false;
+    if(modeFilter !== 'all' && (p.mode||'cosmic') !== modeFilter) return false;
+    return true;
+  });
+
+  const el = document.getElementById('consensus-heatmap');
+  const legendEl = document.getElementById('heatmap-legend');
+
+  if(preds.length === 0) {
+    el.innerHTML = '<div style="color:var(--text2);font-size:14px;">No predictions match the selected filters.</div>';
+    legendEl.style.display = 'none';
+    return;
+  }
+
+  // Count how many times each number was recommended (primary + alt_a + alt_b)
+  const counts = {};
+  preds.forEach(p => {
+    const nums = [...(p.primary||[]), ...(p.alt_a||[]), ...(p.alt_b||[])];
+    nums.forEach(n => { counts[n] = (counts[n]||0) + 1; });
+  });
+
+  // Max possible appearances = preds.length * 3 sets of 5 numbers
+  const maxCount = Math.max(...Object.values(counts), 1);
+  const maxNum = preds.some(p => p.game === 'megamillions') && gameFilter !== 'powerball' ? 70 : 69;
+
+  // Build grid
+  let html = `<div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin-bottom:4px;">`;
+  for(let n = 1; n <= maxNum; n++) {
+    const c = counts[n] || 0;
+    const intensity = c / maxCount; // 0–1
+    // Color: low = dark bg, high = vivid purple→teal gradient
+    const r = Math.round(80 + intensity * 95);   // 80→175
+    const g = Math.round(60 + intensity * 140);  // 60→200
+    const b = Math.round(160 + intensity * 88);  // 160→248
+    const bg = c === 0 ? 'var(--bg3)' : `rgb(${r},${g},${b})`;
+    const textColor = intensity > 0.5 ? '#0d0d1a' : 'var(--text)';
+    const border = c === maxCount ? '2px solid #F0B84A' : '1px solid transparent';
+    html += `<div title="${n}: recommended ${c}x across ${preds.length} prediction set${preds.length!==1?'s':''}"
+      style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:5px;font-size:10px;font-weight:${c>0?'700':'400'};cursor:default;background:${bg};color:${textColor};border:${border};transition:transform 0.1s;"
+      onmouseover="this.style.transform='scale(1.25)';this.style.zIndex=10;"
+      onmouseout="this.style.transform='scale(1)';this.style.zIndex=1;">${n}</div>`;
+  }
+  html += `</div>`;
+  html += `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--text2);">
+    <span>Never</span>
+    <div style="height:8px;flex:1;border-radius:4px;background:linear-gradient(90deg,var(--bg3),rgb(175,200,248));"></div>
+    <span>Most recommended</span>
+    <span style="color:#F0B84A;margin-left:8px;">★ = tied for most</span>
+  </div>
+  <div style="font-size:11px;color:var(--text2);margin-top:6px;">Based on ${preds.length} prediction set${preds.length!==1?'s':''} · ${Object.keys(counts).length} unique numbers recommended · hover a cell for exact count</div>`;
+
+  el.innerHTML = html;
+
+  // Top recurring
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const top = sorted.slice(0, 10);
+  document.getElementById('heatmap-top').innerHTML = top.map(([n,c]) => {
+    const pct = Math.round(c / maxCount * 100);
+    return `<div style="background:var(--bg3);border-radius:8px;padding:6px 10px;text-align:center;min-width:52px;">
+      <div style="font-size:16px;font-weight:700;color:var(--text);">${n}</div>
+      <div style="font-size:10px;color:var(--text2);margin-top:2px;">${c}x · ${pct}%</div>
+    </div>`;
+  }).join('');
+
+  // Numbers never recommended
+  const never = [];
+  for(let n=1; n<=maxNum; n++) if(!counts[n]) never.push(n);
+  document.getElementById('heatmap-cold').textContent = never.length
+    ? never.join(', ')
+    : 'All numbers have been recommended at least once.';
+
+  legendEl.style.display = 'block';
 }
 
 async function autoFillDrawnNumbers() {
