@@ -1517,7 +1517,8 @@ async function autoFillDrawnNumbers() {
       return `<span class="ball ${matched ? 'ball-teal' : 'ball-purple'}" style="width:34px;height:34px;font-size:13px;${matched?'box-shadow:0 0 0 2px #5FD9AE;':''}">${n}</span>`;
     }).join('') + `<span style="color:var(--text2);margin:0 4px;">+</span><span class="ball ball-coral" style="width:34px;height:34px;font-size:13px;">${data.bonus}</span>`;
     const matchCount = data.numbers.filter(n => predNums.includes(n)).length;
-    drawnStatus.innerHTML = `Draw date: <strong>${data.date}</strong> · <span style="color:#5FD9AE;font-weight:600;">${matchCount} number${matchCount!==1?'s':''} matched</span> (teal = matched your prediction)`;
+    const nearestNote = data.nearest ? ` <span style="color:#F0B84A;">(nearest draw — no ${pred.game === 'megamillions' ? 'Mega Millions' : 'Powerball'} draw on ${pred.draw_date})</span>` : '';
+    drawnStatus.innerHTML = `Draw date: <strong>${data.date}</strong>${nearestNote} · <span style="color:#5FD9AE;font-weight:600;">${matchCount} number${matchCount!==1?'s':''} matched</span> (teal = matched your prediction)`;
     document.getElementById('actual-nums-auto').value = data.numbers.join(',');
   } catch(e) {
     drawnLookup.style.display = 'none';
