@@ -257,25 +257,40 @@ def root():
 
 @app.get("/draw/{game}/{draw_date}")
 def get_draw_by_date(game: str, draw_date: str):
-    """Look up the actual winning numbers for a specific game and draw date."""
+    """Look up actual winning numbers for a game and date.
+    If no draw on that exact date, finds the closest draw within 3 days."""
     table = 'megamillions_draws' if game == 'megamillions' else 'powerball_draws'
     bonus_col = 'megaball' if game == 'megamillions' else 'powerball'
     try:
         with engine.connect() as conn:
+            # First try exact date
             row = conn.execute(text(f"""
-                SELECT n1, n2, n3, n4, n5, {bonus_col}
+                SELECT draw_date, n1, n2, n3, n4, n5, {bonus_col}
                 FROM {table}
                 WHERE draw_date = :d
                 ORDER BY id DESC LIMIT 1
             """), {"d": draw_date}).fetchone()
+            # Fall back to nearest draw within 3 days
+            if not row:
+                row = conn.execute(text(f"""
+                    SELECT draw_date, n1, n2, n3, n4, n5, {bonus_col}
+                    FROM {table}
+                    WHERE draw_date BETWEEN :d_minus::date - INTERVAL '3 days' AND :d_plus::date + INTERVAL '3 days'
+                    AND draw_date <= CURRENT_DATE
+                    ORDER BY ABS(draw_date - :d_target::date) ASC
+                    LIMIT 1
+                """), {"d_minus": draw_date, "d_plus": draw_date, "d_target": draw_date}).fetchone()
         if not row:
-            return {"success": False, "error": f"No {game} draw found for {draw_date}"}
+            return {"success": False, "error": f"No {game} draw found near {draw_date}"}
+        actual_date = str(row[0])
         return {
             "success": True,
             "game": game,
-            "date": draw_date,
-            "numbers": sorted([row[0], row[1], row[2], row[3], row[4]]),
-            "bonus": row[5]
+            "date": actual_date,
+            "requested_date": draw_date,
+            "nearest": actual_date != draw_date,
+            "numbers": sorted([row[1], row[2], row[3], row[4], row[5]]),
+            "bonus": row[6]
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
