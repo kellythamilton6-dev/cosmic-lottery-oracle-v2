@@ -403,6 +403,25 @@
       <div id="pred-list"><div style="color:var(--text2);font-size:14px;">No saved predictions yet — generate and save one first.</div></div>
     </div>
 
+    <!-- Weekly History & Similarities -->
+    <div id="pattern-history-panel" style="display:none;margin-top:8px;">
+      <div class="card" style="border-color:var(--teal);">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+          <h2 style="margin:0;">📅 Weekly History &amp; Similarities</h2>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <select id="hist-game-select" style="width:auto;font-size:12px;" onchange="loadPatternHistory(this.value)">
+              <option value="powerball">Powerball</option>
+              <option value="megamillions">Mega Millions</option>
+            </select>
+            <span id="pattern-history-game-label" style="font-size:12px;color:var(--text2);"></span>
+          </div>
+        </div>
+        <p class="sub" style="margin-bottom:14px;">Numbers highlighted in gold appear consistently across multiple Pattern Analysis runs. Run analysis weekly to track which numbers hold.</p>
+        <div id="pattern-history-consensus" style="margin-bottom:16px;"></div>
+        <div id="pattern-history-rows" style="display:flex;flex-direction:column;gap:12px;"></div>
+      </div>
+    </div>
+
   </div>
 <!-- PATTERNS -->
   <div id="panel-patterns" class="panel">
@@ -442,17 +461,6 @@
         <div style="font-size:40px;margin-bottom:12px;">🔍</div>
         <div style="font-size:16px;margin-bottom:8px;">Click Run Analysis to begin</div>
         <div style="font-size:13px;">Takes 15-30 seconds · runs 10 different pattern detection algorithms</div>
-      </div>
-    </div>
-    <div id="pattern-history-panel" style="display:none;margin-top:16px;">
-      <div class="card" style="border-color:var(--teal);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <h2 style="margin:0;">📅 Weekly History &amp; Similarities</h2>
-          <span id="pattern-history-game-label" style="font-size:12px;color:var(--text2);"></span>
-        </div>
-        <p class="sub" style="margin-bottom:14px;">Numbers highlighted in gold appear consistently across multiple analyses. Compare hot/cold/predictions week-over-week.</p>
-        <div id="pattern-history-consensus" style="margin-bottom:16px;"></div>
-        <div id="pattern-history-rows" style="display:flex;flex-direction:column;gap:12px;"></div>
       </div>
     </div>
   </div>
@@ -1627,11 +1635,26 @@ function renderPatternHistory(snapshots, game) {
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;">
           ${consistent.map(([n,c])=>{
             const tags = Object.entries(numSystems[n]||{}).sort((a,b)=>b[1]-a[1]).map(([label,cnt])=>`<span style="font-size:10px;background:rgba(255,255,255,0.06);border-radius:4px;padding:1px 5px;" title="${label} (${cnt}x)">${systemTags[label]} ${label}</span>`).join('');
+            // Run presence dots — one per snapshot oldest→newest, filled if number appeared
+            const numInt = parseInt(n);
+            const dots = snapshots.slice().reverse().map((s, i) => {
+              const snap = s.snapshot;
+              const appeared = [
+                ...(snap.primary||[]), ...(snap.alt_a||[]), ...(snap.alt_b||[]),
+                ...(snap.hot_numbers||[]), ...(snap.most_overdue||[]),
+                ...(snap.systems?.markov||[]), ...(snap.systems?.pairs||[]),
+                ...(snap.systems?.moon||[])
+              ].includes(numInt);
+              const dt = new Date(s.created_at.endsWith('Z')||s.created_at.includes('+')?s.created_at:s.created_at+'Z');
+              const dateLabel = dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' ' + dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+              return `<span title="Run ${i+1}: ${dateLabel}${appeared?' ✓':' —'}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${appeared?'#5FD9AE':'rgba(255,255,255,0.15)'};border:1px solid ${appeared?'#5FD9AE':'rgba(255,255,255,0.2)'};"></span>`;
+            }).join('');
             return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
               <span class="ball ball-teal" style="position:relative;width:38px;height:38px;font-size:13px;box-shadow:0 0 0 2px #F0B84A;flex-shrink:0;" title="Appeared in ${c}/${snapshots.length} analyses">
                 ${n}<span style="position:absolute;top:-6px;right:-6px;background:#F0B84A;color:#000;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">${c}</span>
               </span>
               <div style="display:flex;flex-wrap:wrap;gap:2px;justify-content:center;max-width:80px;">${tags}</div>
+              <div style="display:flex;gap:2px;flex-wrap:wrap;justify-content:center;max-width:80px;" title="Dots = runs oldest→newest · green = included · grey = not">${dots}</div>
             </div>`;
           }).join('')}
         </div>
@@ -1793,7 +1816,11 @@ function showPanel(name, btn) {
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('panel-'+name).classList.add('active');
   if(btn) btn.classList.add('active');
-  if(name==='accuracy') updatePredList();
+  if(name==='accuracy') {
+    updatePredList();
+    const histGame = document.getElementById('hist-game-select')?.value || 'powerball';
+    loadPatternHistory(histGame);
+  }
 }
 
 const MOON_ICONS_P = {'New Moon':'🌑','Waxing Crescent':'🌒','First Quarter':'🌓','Waxing Gibbous':'🌔','Full Moon':'🌕','Waning Gibbous':'🌖','Last Quarter':'🌗','Waning Crescent':'🌘'};
@@ -1842,7 +1869,6 @@ async function runPatternAnalysis() {
       const drawTypeLabel = drawType === 'doubleplay' ? 'Double Play' : 'Main';
       document.getElementById('pattern-last-run').textContent = `Last run: ${new Date().toLocaleTimeString()} · ${drawTypeLabel} · ${data.result.total_draws} draws`;
       savePatternSnapshot(game, drawType, data.result);
-      loadPatternHistory(game);
     } else {
       document.getElementById('pattern-results').innerHTML = '<div class="alert alert-error">Analysis failed — check API is running</div>';
     }
