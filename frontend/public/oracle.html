@@ -363,6 +363,10 @@
           <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
             <input type="radio" name="hm-mode" value="pattern" onchange="renderConsensusHeatmap()"> Historical only
           </label>
+          <span style="width:1px;background:var(--border);margin:0 4px;"></span>
+          <label style="font-size:12px;color:#5FD9AE;display:flex;align-items:center;gap:6px;cursor:pointer;" title="Blends Markov chain predictions and hot numbers from your Pattern Analysis history into the heatmap">
+            <input type="checkbox" id="hm-pattern-signals" onchange="renderConsensusHeatmap()"> + Pattern signals (Markov &amp; frequency)
+          </label>
         </div>
         <div id="consensus-heatmap" style="color:var(--text2);font-size:14px;">Save predictions to see your number consensus heatmap.</div>
         <div id="heatmap-legend" style="display:none;margin-top:14px;">
@@ -563,6 +567,7 @@ let lastResult = null;
 let currentMode = 'cosmic';
 let savedPredictions = [];
 let authToken = null;
+let patternSnapshots = {}; // keyed by game, holds last-fetched snapshot arrays
 
 document.getElementById('drawdate').value = new Date().toISOString().split('T')[0];
 
@@ -1470,6 +1475,24 @@ function renderConsensusHeatmap() {
     nums.forEach(n => { counts[n] = (counts[n]||0) + 1; });
   });
 
+  // Optionally blend in Markov + hot number signals from pattern snapshots
+  const includeSignals = document.getElementById('hm-pattern-signals')?.checked;
+  if (includeSignals) {
+    // Collect snapshots for the relevant game(s)
+    const games = gameFilter === 'all' ? ['powerball', 'megamillions'] : [gameFilter];
+    games.forEach(game => {
+      (patternSnapshots[game] || []).forEach(s => {
+        const snap = s.snapshot || {};
+        // Markov next predictions — weighted at 0.5 per appearance
+        (snap.systems?.markov || []).forEach(n => { counts[n] = (counts[n]||0) + 0.5; });
+        // Hot numbers — weighted at 0.5
+        (snap.hot_numbers || []).forEach(n => { counts[n] = (counts[n]||0) + 0.5; });
+        // Overdue numbers — weighted at 0.4
+        (snap.most_overdue || []).forEach(n => { counts[n] = (counts[n]||0) + 0.4; });
+      });
+    });
+  }
+
   // Max possible appearances = preds.length * 3 sets of 5 numbers
   const maxCount = Math.max(...Object.values(counts), 1);
   const maxNum = preds.some(p => p.game === 'megamillions') && gameFilter !== 'powerball' ? 70 : 69;
@@ -1498,7 +1521,7 @@ function renderConsensusHeatmap() {
     <span>Most recommended</span>
     <span style="color:#F0B84A;margin-left:8px;">★ = tied for most</span>
   </div>
-  <div style="font-size:11px;color:var(--text2);margin-top:6px;">Based on ${preds.length} prediction set${preds.length!==1?'s':''} · ${Object.keys(counts).length} unique numbers recommended · hover a cell for exact count</div>`;
+  <div style="font-size:11px;color:var(--text2);margin-top:6px;">Based on ${preds.length} prediction set${preds.length!==1?'s':''}${includeSignals?' · +Pattern signals (Markov, hot, overdue) blended in':''} · hover a cell for exact count</div>`;
 
   el.innerHTML = html;
 
@@ -1565,6 +1588,7 @@ async function loadPatternHistory(game) {
     const data = await res.json();
     updateWeekBadge(data.snapshots?.[0]?.created_at || null);
     if(!data.success || !data.snapshots?.length) return;
+    patternSnapshots[game] = data.snapshots;
     renderPatternHistory(data.snapshots, game);
   } catch(e) { /* silent */ }
 }
