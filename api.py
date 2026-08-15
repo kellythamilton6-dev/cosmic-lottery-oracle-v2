@@ -361,6 +361,78 @@ def get_pattern_snapshots(game: str, limit: int = 8, user_id: str = Depends(get_
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/auto-validate-pending")
+def auto_validate_pending(user_id: str = Depends(get_user_id)):
+    """Find all unvalidated predictions and compare against the NEXT draw on or after draw_date."""
+    try:
+        with engine.connect() as conn:
+            ensure_predictions_table(conn)
+            rows = conn.execute(text("""
+                SELECT id, draw_date, game, primary_numbers, bonus_number
+                FROM predictions
+                WHERE user_id = :user_id AND (validated = FALSE OR validated IS NULL)
+                ORDER BY draw_date ASC
+            """), {"user_id": user_id}).fetchall()
+
+            updated = 0
+            results = []
+            for r in rows:
+                pred_id, draw_date, game, primary_numbers, bonus_number = r
+                table = 'megamillions_draws' if game == 'megamillions' else 'powerball_draws'
+                bonus_col = 'megaball' if game == 'megamillions' else 'powerball'
+
+                # Find NEXT draw on or after the prediction's draw_date
+                draw_row = conn.execute(text(f"""
+                    SELECT draw_date, n1, n2, n3, n4, n5, {bonus_col}
+                    FROM {table}
+                    WHERE draw_date >= CAST(:d AS date)
+                    AND draw_date <= CURRENT_DATE
+                    ORDER BY draw_date ASC
+                    LIMIT 1
+                """), {"d": str(draw_date)}).fetchone()
+
+                if not draw_row:
+                    results.append({"id": pred_id, "status": "no_draw_yet"})
+                    continue
+
+                actual_date = str(draw_row[0])
+                actual_nums = sorted([draw_row[1], draw_row[2], draw_row[3], draw_row[4], draw_row[5]])
+                actual_bonus = draw_row[6]
+                actual_str = ",".join(str(n) for n in actual_nums)
+
+                predicted = [int(n) for n in primary_numbers.split(",")]
+                matches = len(set(predicted) & set(actual_nums))
+                bonus_match = bonus_number == actual_bonus if bonus_number is not None else False
+
+                conn.execute(text("""
+                    UPDATE predictions SET
+                        actual_numbers = :actual,
+                        actual_bonus = :bonus,
+                        matches = :matches,
+                        validated = TRUE
+                    WHERE id = :id AND user_id = :user_id
+                """), {
+                    "actual": actual_str,
+                    "bonus": actual_bonus,
+                    "matches": matches,
+                    "id": pred_id,
+                    "user_id": user_id,
+                })
+                updated += 1
+                results.append({
+                    "id": pred_id,
+                    "draw_date": str(draw_date),
+                    "actual_draw_date": actual_date,
+                    "matches": matches,
+                    "bonus_match": bonus_match,
+                    "status": "validated",
+                })
+
+            conn.commit()
+        return {"success": True, "updated": updated, "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/moon")
 def moon_today():
     phase = get_moon_phase(date.today())

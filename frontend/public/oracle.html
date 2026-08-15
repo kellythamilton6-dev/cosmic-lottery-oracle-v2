@@ -589,6 +589,24 @@ async function loadPredictions() {
   }
 }
 
+async function autoValidatePending() {
+  if (!authToken) return;
+  const pending = savedPredictions.filter(p => !p.validated);
+  if (pending.length === 0) return;
+  try {
+    const res = await fetch(`${API}/auto-validate-pending`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    const data = await res.json();
+    if (data.success && data.updated > 0) {
+      await loadPredictions();
+    }
+  } catch (e) {
+    console.error('Auto-validate failed', e);
+  }
+}
+
 // ============================================================
 // MODE & WEIGHTS
 // ============================================================
@@ -1817,9 +1835,11 @@ function showPanel(name, btn) {
   document.getElementById('panel-'+name).classList.add('active');
   if(btn) btn.classList.add('active');
   if(name==='accuracy') {
-    updatePredList();
-    const histGame = document.getElementById('hist-game-select')?.value || 'powerball';
-    loadPatternHistory(histGame);
+    autoValidatePending().then(() => {
+      updatePredList();
+      const histGame = document.getElementById('hist-game-select')?.value || 'powerball';
+      loadPatternHistory(histGame);
+    });
   }
 }
 
