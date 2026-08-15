@@ -1499,6 +1499,12 @@ function renderConsensusHeatmap() {
 
 async function savePatternSnapshot(game, drawType, result) {
   if(!authToken) return;
+  // Extract top numbers from each system for source attribution
+  const markovNums = (result.markov?.most_likely_next || []).slice(0, 15);
+  const moonNums = (result.moon_correlation?.[result.current_moon_phase]?.top_numbers || []).slice(0, 15);
+  const pairNums = [...new Set((result.pairs?.top_pairs || []).slice(0,10).flatMap(p => p.numbers))].slice(0, 15);
+  const clusterNums = [...new Set((result.clusters?.clusters || []).flat())].slice(0, 15);
+  const positionalNums = [...new Set(Object.values(result.positional || {}).flatMap(p => (p.top || []).slice(0,3)))].slice(0, 15);
   const slim = {
     game,
     draw_type: drawType,
@@ -1513,6 +1519,7 @@ async function savePatternSnapshot(game, drawType, result) {
     top_confidence: result.top_20_by_confidence?.slice(0,10).map(x=>x.number) || [],
     moon_phase: result.current_moon_phase,
     balance: { recommended_odd_even: result.balance?.recommended_odd_even, recommended_high_low: result.balance?.recommended_high_low, optimal_sum_range: result.balance?.optimal_sum_range },
+    systems: { markov: markovNums, moon: moonNums, pairs: pairNums, clusters: clusterNums, positional: positionalNums },
   };
   try {
     await fetch(`${API}/pattern-snapshot/save`, {
@@ -1593,16 +1600,42 @@ function renderPatternHistory(snapshots, game) {
     .filter(([,c]) => c >= Math.max(2, Math.ceil(snapshots.length * 0.5)))
     .sort((a,b) => b[1]-a[1]);
 
+  // Build per-number system attribution across all snapshots
+  const systemTags = { hot:'🔥', overdue:'⏰', markov:'🎯', pairs:'🔗', moon:'🌙', clusters:'✦', positional:'📍' };
+  const numSystems = {};
+  snapshots.forEach(s => {
+    const sys = s.snapshot.systems || {};
+    const checks = [
+      ['hot',       s.snapshot.hot_numbers || []],
+      ['overdue',   s.snapshot.most_overdue || []],
+      ['markov',    sys.markov || []],
+      ['pairs',     sys.pairs || []],
+      ['moon',      sys.moon || []],
+      ['clusters',  sys.clusters || []],
+      ['positional',sys.positional || []],
+    ];
+    checks.forEach(([label, nums]) => nums.forEach(n => {
+      if(!numSystems[n]) numSystems[n] = {};
+      numSystems[n][label] = (numSystems[n][label] || 0) + 1;
+    }));
+  });
+
   if(consistent.length) {
     consensusEl.innerHTML = `
       <div style="background:rgba(95,217,174,0.08);border:1px solid rgba(95,217,174,0.25);border-radius:10px;padding:12px;">
         <div class="section-label" style="margin-bottom:8px;">⭐ Numbers appearing in ≥50% of analyses (most consistent picks)</div>
-        <div class="balls-row" style="flex-wrap:wrap;gap:6px;">
-          ${consistent.map(([n,c])=>`<span class="ball ball-teal" style="position:relative;width:38px;height:38px;font-size:13px;box-shadow:0 0 0 2px #F0B84A;" title="Appeared in ${c}/${snapshots.length} analyses">
-            ${n}<span style="position:absolute;top:-6px;right:-6px;background:#F0B84A;color:#000;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">${c}</span>
-          </span>`).join('')}
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;">
+          ${consistent.map(([n,c])=>{
+            const tags = Object.entries(numSystems[n]||{}).sort((a,b)=>b[1]-a[1]).map(([label,cnt])=>`<span style="font-size:10px;background:rgba(255,255,255,0.06);border-radius:4px;padding:1px 5px;" title="${label} (${cnt}x)">${systemTags[label]} ${label}</span>`).join('');
+            return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+              <span class="ball ball-teal" style="position:relative;width:38px;height:38px;font-size:13px;box-shadow:0 0 0 2px #F0B84A;flex-shrink:0;" title="Appeared in ${c}/${snapshots.length} analyses">
+                ${n}<span style="position:absolute;top:-6px;right:-6px;background:#F0B84A;color:#000;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">${c}</span>
+              </span>
+              <div style="display:flex;flex-wrap:wrap;gap:2px;justify-content:center;max-width:80px;">${tags}</div>
+            </div>`;
+          }).join('')}
         </div>
-        <div style="font-size:11px;color:var(--text2);margin-top:6px;">Badge = how many runs included this number · gold ring = consistent signal</div>
+        <div style="font-size:11px;color:var(--text2);">Badge = runs included · tags = which systems flagged it · 🔥 hot · ⏰ overdue · 🎯 Markov · 🔗 pairs · 🌙 moon · ✦ cluster · 📍 positional</div>
       </div>`;
   } else {
     consensusEl.innerHTML = `<div style="font-size:13px;color:var(--text2);margin-bottom:8px;">Run analysis a few more times to see consistency patterns.</div>`;
