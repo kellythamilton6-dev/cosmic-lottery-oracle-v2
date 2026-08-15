@@ -275,9 +275,9 @@ def get_draw_by_date(game: str, draw_date: str):
                 row = conn.execute(text(f"""
                     SELECT draw_date, n1, n2, n3, n4, n5, {bonus_col}
                     FROM {table}
-                    WHERE draw_date BETWEEN :d_minus::date - INTERVAL '3 days' AND :d_plus::date + INTERVAL '3 days'
+                    WHERE draw_date BETWEEN CAST(:d_minus AS date) - INTERVAL '3 days' AND CAST(:d_plus AS date) + INTERVAL '3 days'
                     AND draw_date <= CURRENT_DATE
-                    ORDER BY ABS(draw_date - :d_target::date) ASC
+                    ORDER BY ABS(draw_date - CAST(:d_target AS date)) ASC
                     LIMIT 1
                 """), {"d_minus": draw_date, "d_plus": draw_date, "d_target": draw_date}).fetchone()
         if not row:
