@@ -434,6 +434,7 @@
         </select>
         <button class="btn btn-primary" onclick="runPatternAnalysis()" id="pattern-btn">🔍 Run Analysis</button>
         <span id="pattern-last-run" style="font-size:12px;color:var(--text2);"></span>
+        <span id="pattern-week-badge" style="display:none;font-size:11px;padding:3px 8px;border-radius:12px;font-weight:600;"></span>
       </div>
     </div>
     <div id="pattern-results">
@@ -1529,9 +1530,42 @@ async function loadPatternHistory(game) {
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
     const data = await res.json();
+    updateWeekBadge(data.snapshots?.[0]?.created_at || null);
     if(!data.success || !data.snapshots?.length) return;
     renderPatternHistory(data.snapshots, game);
   } catch(e) { /* silent */ }
+}
+
+function updateWeekBadge(lastRunIso) {
+  const badge = document.getElementById('pattern-week-badge');
+  const lastRun = document.getElementById('pattern-last-run');
+  if(!lastRunIso) {
+    badge.style.display = 'none';
+    return;
+  }
+  const dt = new Date(lastRunIso);
+  const now = new Date();
+  const daysSince = Math.floor((now - dt) / 1000 / 60 / 60 / 24);
+  const dateStr = dt.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+  const timeStr = dt.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+  lastRun.textContent = `Last run: ${dateStr} at ${timeStr}`;
+  badge.style.display = 'inline-block';
+  if(daysSince === 0) {
+    badge.textContent = 'Run today ✓';
+    badge.style.background = 'rgba(95,217,174,0.15)';
+    badge.style.color = '#5FD9AE';
+    badge.style.border = '1px solid rgba(95,217,174,0.4)';
+  } else if(daysSince <= 7) {
+    badge.textContent = `${daysSince}d ago`;
+    badge.style.background = 'rgba(240,184,74,0.15)';
+    badge.style.color = '#F0B84A';
+    badge.style.border = '1px solid rgba(240,184,74,0.4)';
+  } else {
+    badge.textContent = `${daysSince}d ago — due for refresh`;
+    badge.style.background = 'rgba(240,106,106,0.15)';
+    badge.style.color = '#F06A6A';
+    badge.style.border = '1px solid rgba(240,106,106,0.4)';
+  }
 }
 
 function renderPatternHistory(snapshots, game) {
@@ -1737,6 +1771,10 @@ function paOnGameChange() {
   // disable the option rather than silently ignoring the selection.
   drawTypeSel.querySelector('option[value="doubleplay"]').disabled = (game === 'megamillions');
   if (game === 'megamillions') drawTypeSel.value = 'main';
+  // Reset badge while new game's history loads
+  document.getElementById('pattern-last-run').textContent = '';
+  document.getElementById('pattern-week-badge').style.display = 'none';
+  loadPatternHistory(game);
   runPatternAnalysis();
 }
 
