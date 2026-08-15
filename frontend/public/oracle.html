@@ -443,6 +443,17 @@
         <div style="font-size:13px;">Takes 15-30 seconds · runs 10 different pattern detection algorithms</div>
       </div>
     </div>
+    <div id="pattern-history-panel" style="display:none;margin-top:16px;">
+      <div class="card" style="border-color:var(--teal);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <h2 style="margin:0;">📅 Weekly History &amp; Similarities</h2>
+          <span id="pattern-history-game-label" style="font-size:12px;color:var(--text2);"></span>
+        </div>
+        <p class="sub" style="margin-bottom:14px;">Numbers highlighted in gold appear consistently across multiple analyses. Compare hot/cold/predictions week-over-week.</p>
+        <div id="pattern-history-consensus" style="margin-bottom:16px;"></div>
+        <div id="pattern-history-rows" style="display:flex;flex-direction:column;gap:12px;"></div>
+      </div>
+    </div>
   </div>
 
   <!-- PATTERN MATCH -->
@@ -1485,6 +1496,122 @@ function renderConsensusHeatmap() {
   legendEl.style.display = 'block';
 }
 
+async function savePatternSnapshot(game, drawType, result) {
+  if(!authToken) return;
+  const slim = {
+    game,
+    draw_type: drawType,
+    total_draws: result.total_draws,
+    primary: result.primary,
+    bonus_primary: result.bonus_primary,
+    alt_a: result.alt_a,
+    alt_b: result.alt_b,
+    hot_numbers: result.hot_numbers || (result.frequency?.hot?.slice(0,10)),
+    cold_numbers: result.cold_numbers || (result.frequency?.cold?.slice(0,10)),
+    most_overdue: result.most_overdue || [],
+    top_confidence: result.top_20_by_confidence?.slice(0,10).map(x=>x.number) || [],
+    moon_phase: result.current_moon_phase,
+    balance: { recommended_odd_even: result.balance?.recommended_odd_even, recommended_high_low: result.balance?.recommended_high_low, optimal_sum_range: result.balance?.optimal_sum_range },
+  };
+  try {
+    await fetch(`${API}/pattern-snapshot/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+      body: JSON.stringify({ game, draw_type: drawType, snapshot: slim }),
+    });
+  } catch(e) { /* silent */ }
+}
+
+async function loadPatternHistory(game) {
+  if(!authToken) return;
+  try {
+    const res = await fetch(`${API}/pattern-snapshot/history/${game}`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    const data = await res.json();
+    if(!data.success || !data.snapshots?.length) return;
+    renderPatternHistory(data.snapshots, game);
+  } catch(e) { /* silent */ }
+}
+
+function renderPatternHistory(snapshots, game) {
+  const panel = document.getElementById('pattern-history-panel');
+  const rowsEl = document.getElementById('pattern-history-rows');
+  const consensusEl = document.getElementById('pattern-history-consensus');
+  const labelEl = document.getElementById('pattern-history-game-label');
+  panel.style.display = 'block';
+  labelEl.textContent = `${game === 'megamillions' ? 'Mega Millions' : 'Powerball'} · last ${snapshots.length} analysis runs`;
+
+  // Build consensus: count appearances across all snapshots
+  const freq = {};
+  const countIn = (arr) => arr?.forEach(n => { freq[n] = (freq[n]||0) + 1; });
+  snapshots.forEach(s => {
+    countIn(s.snapshot.primary);
+    countIn(s.snapshot.alt_a);
+    countIn(s.snapshot.alt_b);
+    countIn(s.snapshot.hot_numbers);
+    countIn(s.snapshot.top_confidence);
+  });
+  const maxFreq = Math.max(...Object.values(freq), 1);
+  // Numbers appearing in ≥ half the snapshots
+  const consistent = Object.entries(freq)
+    .filter(([,c]) => c >= Math.max(2, Math.ceil(snapshots.length * 0.5)))
+    .sort((a,b) => b[1]-a[1]);
+
+  if(consistent.length) {
+    consensusEl.innerHTML = `
+      <div style="background:rgba(95,217,174,0.08);border:1px solid rgba(95,217,174,0.25);border-radius:10px;padding:12px;">
+        <div class="section-label" style="margin-bottom:8px;">⭐ Numbers appearing in ≥50% of analyses (most consistent picks)</div>
+        <div class="balls-row" style="flex-wrap:wrap;gap:6px;">
+          ${consistent.map(([n,c])=>`<span class="ball ball-teal" style="position:relative;width:38px;height:38px;font-size:13px;box-shadow:0 0 0 2px #F0B84A;" title="Appeared in ${c}/${snapshots.length} analyses">
+            ${n}<span style="position:absolute;top:-6px;right:-6px;background:#F0B84A;color:#000;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;">${c}</span>
+          </span>`).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:6px;">Badge = how many runs included this number · gold ring = consistent signal</div>
+      </div>`;
+  } else {
+    consensusEl.innerHTML = `<div style="font-size:13px;color:var(--text2);margin-bottom:8px;">Run analysis a few more times to see consistency patterns.</div>`;
+  }
+
+  // Render each snapshot row (newest first, already sorted)
+  rowsEl.innerHTML = snapshots.map((s, i) => {
+    const snap = s.snapshot;
+    const dt = new Date(s.created_at);
+    const label = i === 0 ? 'Latest' : `${Math.round((Date.now()-dt)/1000/3600/24)}d ago`;
+    const dateStr = dt.toLocaleDateString('en-US', {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'});
+    const ball = (n, cls, highlight) => `<span class="ball ${cls}" style="width:30px;height:30px;font-size:11px;${highlight?'box-shadow:0 0 0 2px #F0B84A;':''}">${n}</span>`;
+    const isConsistentNum = n => freq[n] >= Math.max(2, Math.ceil(snapshots.length * 0.5));
+    const primaryBalls = snap.primary?.map(n => ball(n, 'ball-purple', isConsistentNum(n))).join('') || '—';
+    const hotBalls = (snap.hot_numbers||[]).slice(0,6).map(n => ball(n, 'ball-coral', isConsistentNum(n))).join('');
+    const coldBalls = (snap.cold_numbers||[]).slice(0,6).map(n => ball(n, 'ball-secondary', isConsistentNum(n))).join('');
+    return `
+      <div style="background:var(--bg3);border-radius:10px;padding:12px;${i===0?'border:1px solid rgba(95,217,174,0.3);':''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div>
+            <span style="font-size:12px;font-weight:700;color:${i===0?'#5FD9AE':'var(--text)'};">${label}</span>
+            <span style="font-size:11px;color:var(--text2);margin-left:8px;">${dateStr} · ${snap.total_draws} draws · ${snap.moon_phase||''}</span>
+          </div>
+          <span style="font-size:11px;color:var(--text2);">${snap.draw_type==='doubleplay'?'Double Play':'Main'}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:11px;">
+          <div>
+            <div class="section-label" style="font-size:10px;margin-bottom:4px;">Primary pick</div>
+            <div class="balls-row" style="gap:3px;">${primaryBalls}${snap.bonus_primary!=null?`<span style="color:var(--text2);margin:0 2px;">+</span><span class="ball ball-coral" style="width:30px;height:30px;font-size:11px;">${snap.bonus_primary}</span>`:''}</div>
+          </div>
+          <div>
+            <div class="section-label" style="font-size:10px;margin-bottom:4px;">🔥 Hot</div>
+            <div class="balls-row" style="gap:3px;">${hotBalls||'—'}</div>
+          </div>
+          <div>
+            <div class="section-label" style="font-size:10px;margin-bottom:4px;">❄ Cold</div>
+            <div class="balls-row" style="gap:3px;">${coldBalls||'—'}</div>
+          </div>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:var(--text2);">${snap.balance?.recommended_odd_even ? `Odd/Even: ${snap.balance.recommended_odd_even} · High/Low: ${snap.balance.recommended_high_low} · Sum range: ${snap.balance.optimal_sum_range?.[0]}–${snap.balance.optimal_sum_range?.[1]}` : ''}</div>
+      </div>`;
+  }).join('');
+}
+
 async function autoFillDrawnNumbers() {
   const idx = document.getElementById('pred-select').value;
   const drawnLookup = document.getElementById('drawn-lookup');
@@ -1642,6 +1769,8 @@ async function runPatternAnalysis() {
       renderPatternDashboard(data.result);
       const drawTypeLabel = drawType === 'doubleplay' ? 'Double Play' : 'Main';
       document.getElementById('pattern-last-run').textContent = `Last run: ${new Date().toLocaleTimeString()} · ${drawTypeLabel} · ${data.result.total_draws} draws`;
+      savePatternSnapshot(game, drawType, data.result);
+      loadPatternHistory(game);
     } else {
       document.getElementById('pattern-results').innerHTML = '<div class="alert alert-error">Analysis failed — check API is running</div>';
     }

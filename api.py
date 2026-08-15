@@ -295,6 +295,72 @@ def get_draw_by_date(game: str, draw_date: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def ensure_pattern_snapshots_table(conn):
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS pattern_snapshots (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            game TEXT NOT NULL,
+            draw_type TEXT NOT NULL DEFAULT 'main',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            snapshot JSONB NOT NULL
+        )
+    """))
+    conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_pattern_snapshots_user_game
+        ON pattern_snapshots (user_id, game, created_at DESC)
+    """))
+
+class SaveSnapshotRequest(BaseModel):
+    game: str
+    draw_type: Optional[str] = 'main'
+    snapshot: dict
+
+@app.post("/pattern-snapshot/save")
+def save_pattern_snapshot(req: SaveSnapshotRequest, user_id: str = Depends(get_user_id)):
+    try:
+        import json
+        with engine.connect() as conn:
+            ensure_pattern_snapshots_table(conn)
+            conn.execute(text("""
+                INSERT INTO pattern_snapshots (user_id, game, draw_type, snapshot)
+                VALUES (:user_id, :game, :draw_type, :snapshot::jsonb)
+            """), {
+                "user_id": user_id,
+                "game": req.game,
+                "draw_type": req.draw_type or 'main',
+                "snapshot": json.dumps(req.snapshot),
+            })
+            conn.commit()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/pattern-snapshot/history/{game}")
+def get_pattern_snapshots(game: str, limit: int = 8, user_id: str = Depends(get_user_id)):
+    try:
+        with engine.connect() as conn:
+            ensure_pattern_snapshots_table(conn)
+            rows = conn.execute(text("""
+                SELECT id, game, draw_type, created_at, snapshot
+                FROM pattern_snapshots
+                WHERE user_id = :user_id AND game = :game
+                ORDER BY created_at DESC
+                LIMIT :limit
+            """), {"user_id": user_id, "game": game, "limit": limit}).fetchall()
+        snapshots = []
+        for row in rows:
+            snapshots.append({
+                "id": row[0],
+                "game": row[1],
+                "draw_type": row[2],
+                "created_at": row[3].isoformat(),
+                "snapshot": row[4],
+            })
+        return {"success": True, "snapshots": snapshots}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/moon")
 def moon_today():
     phase = get_moon_phase(date.today())
