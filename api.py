@@ -324,7 +324,7 @@ def save_pattern_snapshot(req: SaveSnapshotRequest, user_id: str = Depends(get_u
             ensure_pattern_snapshots_table(conn)
             conn.execute(text("""
                 INSERT INTO pattern_snapshots (user_id, game, draw_type, snapshot)
-                VALUES (:user_id, :game, :draw_type, :snapshot::jsonb)
+                VALUES (:user_id, :game, :draw_type, CAST(:snapshot AS jsonb))
             """), {
                 "user_id": user_id,
                 "game": req.game,
