@@ -272,8 +272,16 @@
           <div class="metric"><div class="metric-label">Nakshatra</div><div class="metric-value" style="font-size:12px;" id="r-nak">—</div></div>
         </div>
         <div class="reading" id="r-reading"></div>
-        <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
-          <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="savePrediction()">💾 Save prediction</button>
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;">
+          <div style="display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+            <button id="save-pred-btn" class="btn btn-secondary" style="font-size:13px;padding:7px 14px;border:none;border-radius:0;" onclick="savePrediction()">💾 Save</button>
+            <select id="save-set-select" style="font-size:12px;padding:7px 8px;background:var(--bg2);color:var(--text);border:none;border-left:1px solid var(--border);border-radius:0;cursor:pointer;" onchange="document.getElementById('save-pred-btn').textContent='💾 Save ' + this.options[this.selectedIndex].text">
+              <option value="primary">Primary</option>
+              <option value="alt_a">Alternative A</option>
+              <option value="alt_b">Alternative B</option>
+              <option value="structure">Structure-guided</option>
+            </select>
+          </div>
           <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="generateNumbers()">⟳ Regenerate</button>
         </div>
       </div>
@@ -1384,10 +1392,32 @@ function renderStructureGuided(candidateNums, bonusNum, game) {
 // SAVE & VALIDATE
 // ============================================================
 
-async function savePrediction() {
+async function savePrediction(setKeyArg) {
   if(!lastResult) return;
   if(!authToken) { alert('Please sign in to save predictions.'); return; }
-  const btn = event.target;
+  const btn = document.getElementById('save-pred-btn');
+  const setKey = setKeyArg || document.getElementById('save-set-select')?.value || 'primary';
+
+  // Resolve numbers for the chosen set
+  let numbers, bonus;
+  if (setKey === 'alt_a') {
+    numbers = lastResult.alt_a || lastResult.primary;
+    bonus = lastResult.bonus_alt_a ?? lastResult.bonus_primary;
+  } else if (setKey === 'alt_b') {
+    numbers = lastResult.alt_b || lastResult.primary;
+    bonus = lastResult.bonus_alt_b ?? lastResult.bonus_primary;
+  } else if (setKey === 'structure') {
+    const balls = document.getElementById('balls-structure-guided');
+    const spans = balls ? [...balls.querySelectorAll('.ball:not(.ball-coral)')] : [];
+    const bonusSpan = balls ? balls.querySelector('.ball-coral') : null;
+    numbers = spans.map(s => parseInt(s.textContent));
+    bonus = bonusSpan ? parseInt(bonusSpan.textContent) : lastResult.bonus_primary;
+    if (!numbers.length) { alert('No structure-guided numbers — run a Pattern Match first.'); return; }
+  } else {
+    numbers = lastResult.primary;
+    bonus = lastResult.bonus_primary ?? null;
+  }
+
   btn.disabled = true;
   try {
     const res = await fetch(`${API}/save-prediction`, {
@@ -1400,8 +1430,8 @@ async function savePrediction() {
         birth_date: document.getElementById('birthdate').value || null,
         draw_date: lastResult.draw_date,
         game: lastResult.game,
-        primary_numbers: lastResult.primary.join(','),
-        bonus_number: lastResult.bonus_primary ?? null,
+        primary_numbers: numbers.join(','),
+        bonus_number: bonus ?? null,
         moon_phase: lastResult.moon ? lastResult.moon.phase : 'Pattern',
         sun_sign: lastResult.sun_sign ? lastResult.sun_sign.sign : 'N/A',
         nakshatra: lastResult.nakshatra ? lastResult.nakshatra[0] : 'N/A',
