@@ -300,21 +300,34 @@ def generate_predictions(
 
     pool = {n: 10.0 for n in range(1, max_num + 1)}
 
+    # Each category's weight is a fixed total budget spread across however
+    # many numbers it nominates, not a flat per-number bonus -- the four
+    # candidate lists are wildly different sizes (moon phases can nominate
+    # anywhere from ~30% to 100% of the whole 1-max_num range depending on
+    # bias, while astrology/Vedic typically nominate a much narrower set),
+    # so a flat bonus let whichever category happened to touch the most
+    # numbers dominate the final pick almost regardless of slider weight.
+    # Splitting the budget keeps each category's total influence
+    # proportional to its actual weight, matching what "linked sliders --
+    # always total 100%" implies to the user.
+    def apply_influence(category_nums, weight):
+        if not category_nums:
+            return
+        bonus_per_number = (weight * 500) / len(category_nums)
+        for n in category_nums:
+            pool[n] = pool.get(n, 50) + bonus_per_number
+
     moon_nums = get_moon_lucky_numbers(moon, max_num)
-    for n in moon_nums:
-        pool[n] = pool.get(n, 50) + (w_moon * 500)
+    apply_influence(moon_nums, w_moon)
 
     astro_nums = get_astro_lucky_numbers(sun_sign, max_num)
-    for n in astro_nums:
-        pool[n] = pool.get(n, 50) + (w_astro * 500)
+    apply_influence(astro_nums, w_astro)
 
     vedic_nums = get_vedic_lucky_numbers(nakshatra, max_num)
-    for n in vedic_nums:
-        pool[n] = pool.get(n, 50) + (w_vedic * 500)
+    apply_influence(vedic_nums, w_vedic)
 
     num_nums = get_numerology_lucky_numbers(life_path, name_num, date_num, max_num)
-    for n in num_nums:
-        pool[n] = pool.get(n, 50) + (w_num * 500)
+    apply_influence(num_nums, w_num)
 
     for n in history['hot']:
         if n in pool:
