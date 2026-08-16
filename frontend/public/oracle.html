@@ -256,6 +256,14 @@
         <div class="section-label" style="margin-top:12px;">Alternative B</div>
         <div class="balls-row" id="balls-alt-b"></div>
         <div id="alt-b-summary" style="margin-top:8px;display:none;"></div>
+        <div id="structure-guided-row" style="display:none;margin-top:16px;padding:12px;background:rgba(95,217,174,0.07);border:1px solid rgba(95,217,174,0.25);border-radius:10px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="font-size:11px;font-weight:700;color:#5FD9AE;text-transform:uppercase;letter-spacing:0.06em;">🎯 Structure-guided</span>
+            <span id="structure-guided-source" style="font-size:11px;color:var(--text2);"></span>
+          </div>
+          <div class="balls-row" id="balls-structure-guided" style="margin:0;"></div>
+          <div id="structure-guided-ranges" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"></div>
+        </div>
         <hr style="border:none;border-top:1px solid var(--border);margin:16px 0;">
         <div class="grid4">
           <div class="metric"><div class="metric-label">Life path / Draws</div><div class="metric-value" id="r-lp">—</div></div>
@@ -576,6 +584,7 @@ let currentMode = 'cosmic';
 let savedPredictions = [];
 let authToken = null;
 let patternSnapshots = {}; // keyed by game, holds last-fetched snapshot arrays
+let lastPmStructure = null; // positional_averages from last pattern match run
 
 document.getElementById('drawdate').value = new Date().toISOString().split('T')[0];
 
@@ -1226,6 +1235,7 @@ function displayResults(r) {
   document.getElementById('r-reading').innerHTML = reading + explainNumbers(r);
   explainAltSet(r.alt_a, r.bonus_alt_a, r, 'Alternative A', '#5FD9AE', 'alt-a-summary');
   explainAltSet(r.alt_b, r.bonus_alt_b, r, 'Alternative B', '#F0B84A', 'alt-b-summary');
+  renderStructureGuided([...r.primary, ...(r.alt_a||[]), ...(r.alt_b||[])], r.bonus_primary, r.game||lastPmStructure?.game);
   document.getElementById('results').style.display = 'block';
   document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
@@ -1255,6 +1265,7 @@ function displayHistoricalResults(r) {
         <div style="display:flex;flex-wrap:wrap;gap:4px;">${r.most_overdue.map(n=>`<span style="background:rgba(29,158,117,0.2);color:#5FD9AE;padding:2px 7px;border-radius:4px;font-size:12px;font-weight:600;">${n}</span>`).join('')}</div>
       </div>
     </div>`;
+  renderStructureGuided([...r.hot_numbers, ...r.most_overdue, ...r.primary, ...(r.alt_a||[]), ...(r.alt_b||[])], r.bonus_primary, r.game||lastPmStructure?.game);
   document.getElementById('results').style.display = 'block';
   document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
@@ -1281,6 +1292,8 @@ function displayPatternResults(r) {
 
   const top20 = r.top_20_by_confidence || [];
   const hot = top20.slice(0, 7).map(x => x.number);
+  const game = document.getElementById('pattern-analysis-game')?.value || 'powerball';
+  renderStructureGuided(top20.map(x=>x.number), r.bonus_primary, game);
   const sumCheck = r.sum_check || {};
 
   const hotNums = r.hot_numbers || hot;
@@ -1315,6 +1328,56 @@ function displayPatternResults(r) {
     </div>`;
   document.getElementById('results').style.display = 'block';
   document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function renderStructureGuided(candidateNums, bonusNum, game) {
+  const row = document.getElementById('structure-guided-row');
+  if (!lastPmStructure || lastPmStructure.game !== game) {
+    row.style.display = 'none';
+    return;
+  }
+  const positions = lastPmStructure.positions;
+  const maxNum = game === 'megamillions' ? 70 : 69;
+
+  // Build candidate pool sorted by confidence (candidateNums already ordered)
+  // For each position slot, pick the best candidate that falls in [min, max]
+  const pool = [...candidateNums];
+  const picked = [];
+  for (let i = 0; i < positions.length; i++) {
+    const p = positions[i];
+    // Find highest-ranked candidate in this position's range not already picked
+    let chosen = pool.find(n => n >= p.min && n <= p.max && !picked.includes(n));
+    if (!chosen) {
+      // Relax: pick closest available to avg
+      const available = pool.filter(n => !picked.includes(n));
+      chosen = available.sort((a,b) => Math.abs(a - Math.round(p.avg)) - Math.abs(b - Math.round(p.avg)))[0];
+    }
+    if (chosen) picked.push(chosen);
+  }
+  picked.sort((a,b) => a-b);
+
+  if (picked.length < 5) { row.style.display = 'none'; return; }
+
+  const ballClass = game === 'megamillions' ? 'ball-purple' : 'ball-teal';
+  document.getElementById('balls-structure-guided').innerHTML =
+    picked.map(n => `<span class="ball ${ballClass}" style="width:38px;height:38px;font-size:13px;">${n}</span>`).join('') +
+    (bonusNum != null ? `<span style="color:var(--text2);margin:0 4px;">+</span><span class="ball ball-coral" style="width:38px;height:38px;font-size:13px;">${bonusNum}</span>` : '');
+
+  // Show mini decade badges for each picked number
+  const decadeColors = {9:'#5FD9AE',19:'#A99FF8',29:'#F0B84A',39:'#F08E6A',49:'#5BA8F8',59:'#E07DF0'};
+  const decadeColor = n => Object.entries(decadeColors).find(([k])=>n<=+k)?.[1] || '#F06A6A';
+  document.getElementById('structure-guided-ranges').innerHTML = positions.map((p,i) => {
+    const n = picked[i];
+    const col = n ? decadeColor(n) : 'var(--text2)';
+    const inRange = n >= p.min && n <= p.max;
+    return n ? `<span style="font-size:10px;padding:2px 7px;border-radius:4px;background:rgba(0,0,0,0.3);color:${col};border:1px solid ${inRange?col:'rgba(255,255,255,0.15)'};" title="Position ${i+1}: expected ${p.min}–${p.max}">${n} ${inRange?'✓':'~'}</span>` : '';
+  }).join('');
+
+  const drawLabel = lastPmStructure.draw && lastPmStructure.draw !== 'Custom numbers'
+    ? `from ${new Date(lastPmStructure.draw+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} pattern match`
+    : 'from pattern match structure';
+  document.getElementById('structure-guided-source').textContent = drawLabel;
+  row.style.display = 'block';
 }
 
 // ============================================================
@@ -2299,6 +2362,10 @@ function pmRender(result, game) {
     }).join('');
   }
 
+  // Store positional structure for use in Generate tab
+  if ((result.positional_averages||[]).length && result.positional_averages[0].avg !== null) {
+    lastPmStructure = { positions: result.positional_averages, game, draw: result.target?.date };
+  }
   pmRenderStructure(result, game);
   pmRenderPositional(result, bonusLabel);
   pmRenderFrequency(result, bonusLabel);
