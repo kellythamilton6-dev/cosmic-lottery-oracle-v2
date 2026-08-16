@@ -163,10 +163,10 @@
 
 <nav class="nav">
   <button class="nav-btn active" onclick="showPanel('generate',this)">✦ Generate</button>
+  <button class="nav-btn" onclick="showPanel('patternmatch',this)">🧩 Pattern Match</button>
   <button class="nav-btn" onclick="showPanel('patterns',this)">🔍 Pattern Analysis</button>
   <button class="nav-btn" onclick="showPanel('history',this)">📋 History</button>
   <button class="nav-btn" onclick="showPanel('accuracy',this)">📊 Accuracy</button>
-  <button class="nav-btn" onclick="showPanel('patternmatch',this)">🧩 Pattern Match</button>
 </nav>
 
 <div class="content">
@@ -531,6 +531,14 @@
         <h2>Closest structural matches</h2>
         <p class="sub">Each card shows the drawing right before and right after the match — literally whichever drawing happened next, main or otherwise.</p>
         <div id="pm-match-list" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card" id="pm-predicted-structure" style="display:none;">
+        <h2>🎯 Predicted next draw structure</h2>
+        <p class="sub">Based on the follow-up draws from the structural matches above — the decade range each ball position tends to land in, and the average value.</p>
+        <div id="pm-structure-ranges" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 18px;"></div>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;">Suggested picks from this structure</div>
+        <div id="pm-suggested-picks" style="display:flex;flex-direction:column;gap:10px;"></div>
       </div>
 
       <div class="card">
@@ -2291,6 +2299,7 @@ function pmRender(result, game) {
     }).join('');
   }
 
+  pmRenderStructure(result, game);
   pmRenderPositional(result, bonusLabel);
   pmRenderFrequency(result, bonusLabel);
 }
@@ -2325,6 +2334,68 @@ function pmPosTile(label, p, baseline, actualValue, actualDelta, domainMax, isBo
       </div>
       ${compareLine}
     </div>`;
+}
+
+function pmDecadeLabel(n) {
+  if (n <= 9)  return { label: '1–9',   color: '#5FD9AE', bg: 'rgba(95,217,174,0.15)' };
+  if (n <= 19) return { label: '10–19', color: '#A99FF8', bg: 'rgba(169,159,248,0.15)' };
+  if (n <= 29) return { label: '20–29', color: '#F0B84A', bg: 'rgba(240,184,74,0.15)'  };
+  if (n <= 39) return { label: '30–39', color: '#F08E6A', bg: 'rgba(240,142,106,0.15)' };
+  if (n <= 49) return { label: '40–49', color: '#5BA8F8', bg: 'rgba(91,168,248,0.15)'  };
+  if (n <= 59) return { label: '50–59', color: '#E07DF0', bg: 'rgba(224,125,240,0.15)' };
+  return               { label: '60–70', color: '#F06A6A', bg: 'rgba(240,106,106,0.15)' };
+}
+
+function pmRenderStructure(result, game) {
+  const card = document.getElementById('pm-predicted-structure');
+  const positions = result.positional_averages || [];
+  if (!positions.length || positions[0].avg === null) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  const ORDINALS = ['1st', '2nd', '3rd', '4th', '5th'];
+  const rangesEl = document.getElementById('pm-structure-ranges');
+  rangesEl.innerHTML = positions.map((p, i) => {
+    const d = pmDecadeLabel(Math.round(p.avg));
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:60px;">
+      <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;">${ORDINALS[i]}</div>
+      <div style="padding:6px 10px;border-radius:8px;border:1px solid ${d.color};background:${d.bg};color:${d.color};font-weight:700;font-size:13px;white-space:nowrap;">${d.label}</div>
+      <div style="font-size:11px;color:var(--text2);">avg ${p.avg.toFixed(0)}</div>
+      <div style="font-size:10px;color:var(--text2);opacity:0.7;">${p.min}–${p.max}</div>
+    </div>`;
+  }).join('<div style="color:var(--text2);align-self:center;font-size:16px;padding-top:16px;">·</div>');
+
+  // Generate 3 suggested pick sets from positional ranges
+  const maxNum = result.max_num || 69;
+  function pickSet(strategy) {
+    // strategy: 0=avg, 1=low-skew, 2=high-skew
+    const picked = [];
+    for (let i = 0; i < positions.length; i++) {
+      const p = positions[i];
+      const lo = Math.max(p.min, picked.length ? picked[picked.length-1]+1 : 1);
+      const hi = Math.min(p.max, maxNum);
+      let val;
+      if (strategy === 0) val = Math.round(p.avg);
+      else if (strategy === 1) val = Math.round(p.min + (p.avg - p.min) * 0.35);
+      else val = Math.round(p.avg + (p.max - p.avg) * 0.6);
+      // Clamp and avoid duplicates
+      val = Math.max(lo, Math.min(hi, val));
+      if (picked.includes(val)) val = Math.max(lo, val + 1);
+      picked.push(val);
+    }
+    return picked;
+  }
+
+  const sets = [pickSet(0), pickSet(1), pickSet(2)];
+  const labels = ['Avg', 'Low skew', 'High skew'];
+  const ballClass = game === 'megamillions' ? 'ball-purple' : 'ball-teal';
+
+  document.getElementById('pm-suggested-picks').innerHTML = sets.map((nums, si) => `
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:11px;color:var(--text2);min-width:60px;">${labels[si]}</span>
+      <div class="balls-row" style="margin:0;gap:6px;">
+        ${nums.map(n => `<span class="ball ${ballClass}" style="width:34px;height:34px;font-size:12px;">${n}</span>`).join('')}
+      </div>
+    </div>`).join('');
 }
 
 function pmRenderPositional(result, bonusLabel) {
