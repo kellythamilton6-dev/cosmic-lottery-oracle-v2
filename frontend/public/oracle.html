@@ -1509,7 +1509,7 @@ function renderConsensusHeatmap() {
     const bg = c === 0 ? 'var(--bg3)' : `rgb(${r},${g},${b})`;
     const textColor = intensity > 0.5 ? '#0d0d1a' : 'var(--text)';
     const border = c === maxCount ? '2px solid #F0B84A' : '1px solid transparent';
-    html += `<div title="${n}: recommended ${c}x across ${preds.length} prediction set${preds.length!==1?'s':''}"
+    html += `<div title="${n}: recommended ${(+c).toFixed(1).replace(/\.0$/,'')}x across ${preds.length} prediction set${preds.length!==1?'s':''}"
       style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:5px;font-size:10px;font-weight:${c>0?'700':'400'};cursor:default;background:${bg};color:${textColor};border:${border};transition:transform 0.1s;"
       onmouseover="this.style.transform='scale(1.25)';this.style.zIndex=10;"
       onmouseout="this.style.transform='scale(1)';this.style.zIndex=1;">${n}</div>`;
@@ -1532,7 +1532,7 @@ function renderConsensusHeatmap() {
     const pct = Math.round(c / maxCount * 100);
     return `<div style="background:var(--bg3);border-radius:8px;padding:6px 10px;text-align:center;min-width:52px;">
       <div style="font-size:16px;font-weight:700;color:var(--text);">${n}</div>
-      <div style="font-size:10px;color:var(--text2);margin-top:2px;">${c}x · ${pct}%</div>
+      <div style="font-size:10px;color:var(--text2);margin-top:2px;">${(+c).toFixed(1).replace(/\.0$/,'')}x · ${pct}%</div>
     </div>`;
   }).join('');
 
