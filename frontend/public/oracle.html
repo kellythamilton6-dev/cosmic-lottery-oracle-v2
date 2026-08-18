@@ -1249,6 +1249,8 @@ function displayResults(r) {
 }
 
 function displayHistoricalResults(r) {
+  document.getElementById('alt-a-summary').style.display = 'none';
+  document.getElementById('alt-b-summary').style.display = 'none';
   renderBalls(r.primary, r.bonus_primary, 'balls-primary', 'ball-purple');
   renderBalls(r.alt_a, r.bonus_alt_a, 'balls-alt-a', 'ball-teal');
   renderBalls(r.alt_b, r.bonus_alt_b, 'balls-alt-b', 'ball-amber');
@@ -1279,6 +1281,8 @@ function displayHistoricalResults(r) {
 }
 
 function displayPatternResults(r) {
+  document.getElementById('alt-a-summary').style.display = 'none';
+  document.getElementById('alt-b-summary').style.display = 'none';
   const drawDate = new Date().toISOString().split('T')[0];
   r.draw_date = drawDate;
   r.moon = { phase: r.current_moon_phase || 'Unknown' };
