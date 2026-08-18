@@ -1351,17 +1351,21 @@ function renderStructureGuided(candidateNums, bonusNum, game) {
   const positions = lastPmStructure.positions;
   const maxNum = game === 'megamillions' ? 70 : 69;
 
-  // Build candidate pool sorted by confidence (candidateNums already ordered)
-  // For each position slot, pick the best candidate that falls in [min, max]
-  const pool = [...candidateNums];
+  // Candidate tiers (highest to lowest priority):
+  //   1. followupNums — numbers ranked by actual frequency in pattern match follow-up draws
+  //   2. candidateNums — numbers from the current generated set
+  //   3. allNums — full valid lottery range as last resort
+  const followupPool = lastPmStructure.followupNums || [];
   const allNums = Array.from({length: maxNum}, (_, i) => i + 1);
   const picked = [];
   for (let i = 0; i < positions.length; i++) {
     const p = positions[i];
-    // Find highest-ranked candidate in this position's range not already picked
-    let chosen = pool.find(n => n >= p.min && n <= p.max && !picked.includes(n));
+    // Tier 1: highest-frequency follow-up number in range
+    let chosen = followupPool.find(n => n >= p.min && n <= p.max && !picked.includes(n));
+    // Tier 2: generated candidate in range
+    if (!chosen) chosen = candidateNums.find(n => n >= p.min && n <= p.max && !picked.includes(n));
+    // Tier 3: closest to avg from full lottery range
     if (!chosen) {
-      // Fallback: pick closest number from full range (any valid lottery number) to avg
       const available = allNums.filter(n => !picked.includes(n));
       chosen = available.sort((a,b) => Math.abs(a - Math.round(p.avg)) - Math.abs(b - Math.round(p.avg)))[0];
     }
@@ -2399,7 +2403,13 @@ function pmRender(result, game) {
 
   // Store positional structure for use in Generate tab
   if ((result.positional_averages||[]).length && result.positional_averages[0].avg !== null) {
-    lastPmStructure = { positions: result.positional_averages, game, draw: result.target?.date };
+    lastPmStructure = {
+      positions: result.positional_averages,
+      game,
+      draw: result.target?.date,
+      followupNums: (result.followup_white_frequency || []).map(([n]) => n),
+      followupBonus: (result.followup_bonus_frequency || []).map(([n]) => n),
+    };
   }
   pmRenderStructure(result, game);
   pmRenderPositional(result, bonusLabel);
