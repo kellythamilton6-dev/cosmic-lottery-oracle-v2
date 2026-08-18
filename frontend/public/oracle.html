@@ -1354,14 +1354,15 @@ function renderStructureGuided(candidateNums, bonusNum, game) {
   // Build candidate pool sorted by confidence (candidateNums already ordered)
   // For each position slot, pick the best candidate that falls in [min, max]
   const pool = [...candidateNums];
+  const allNums = Array.from({length: maxNum}, (_, i) => i + 1);
   const picked = [];
   for (let i = 0; i < positions.length; i++) {
     const p = positions[i];
     // Find highest-ranked candidate in this position's range not already picked
     let chosen = pool.find(n => n >= p.min && n <= p.max && !picked.includes(n));
     if (!chosen) {
-      // Relax: pick closest available to avg
-      const available = pool.filter(n => !picked.includes(n));
+      // Fallback: pick closest number from full range (any valid lottery number) to avg
+      const available = allNums.filter(n => !picked.includes(n));
       chosen = available.sort((a,b) => Math.abs(a - Math.round(p.avg)) - Math.abs(b - Math.round(p.avg)))[0];
     }
     if (chosen) picked.push(chosen);
