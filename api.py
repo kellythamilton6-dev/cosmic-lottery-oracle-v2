@@ -812,6 +812,217 @@ def pattern_analysis(req: PredictionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ============================================================
+# TSF (TRANSITION & STRUCTURAL FORECASTING MODEL)
+# ============================================================
+
+class TsfCommitRequest(BaseModel):
+    game: str = "powerball"
+    draw_type: str = "main"
+
+class TsfScoreRequest(BaseModel):
+    id: Optional[int] = None
+    game: Optional[str] = None
+    draw_type: Optional[str] = None
+
+TSF_CREATE_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS tsf_forecasts (
+        id SERIAL PRIMARY KEY,
+        game VARCHAR(30) NOT NULL,
+        draw_type VARCHAR(20) NOT NULL DEFAULT 'main',
+        model_version VARCHAR(20) NOT NULL,
+        as_of_draw_date DATE NOT NULL,
+        target_draw_date DATE NOT NULL,
+        committed_at TIMESTAMP DEFAULT NOW(),
+        structural_state JSONB NOT NULL,
+        persistent_zones JSONB NOT NULL,
+        transitions JSONB NOT NULL,
+        hypotheses JSONB NOT NULL,
+        lines JSONB NOT NULL,
+        actual_numbers VARCHAR(100),
+        actual_draw_date DATE,
+        scored BOOLEAN DEFAULT FALSE,
+        scorecard JSONB,
+        scored_at TIMESTAMP,
+        UNIQUE (game, draw_type, target_draw_date)
+    )
+"""
+
+@app.get("/tsf/forecast")
+def tsf_forecast_route(game: str = "powerball", draw_type: str = "main"):
+    try:
+        from tsf_engine import tsf_forecast
+        result = tsf_forecast(game, draw_type)
+        if 'error' in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+        return {"success": True, "result": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tsf/commit")
+def tsf_commit(req: TsfCommitRequest):
+    try:
+        from tsf_engine import tsf_forecast, MODEL_VERSION
+        import json as _json
+
+        result = tsf_forecast(req.game, req.draw_type)
+        if 'error' in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+
+        as_of = datetime.strptime(result['as_of_draw_date'], "%Y-%m-%d").date()
+        target = datetime.strptime(result['target_draw_date'], "%Y-%m-%d").date()
+        if target <= as_of:
+            raise HTTPException(status_code=400, detail="Target draw date is not after the most recent known draw")
+
+        with engine.connect() as conn:
+            conn.execute(text(TSF_CREATE_TABLE_SQL))
+            existing = conn.execute(text("""
+                SELECT id, committed_at FROM tsf_forecasts
+                WHERE game = :game AND draw_type = :draw_type AND target_draw_date = :target
+            """), {"game": req.game, "draw_type": req.draw_type, "target": target}).fetchone()
+            if existing:
+                conn.commit()
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Forecast already committed for {target} (id={existing[0]}, committed {existing[1]})"
+                )
+            row = conn.execute(text("""
+                INSERT INTO tsf_forecasts
+                (game, draw_type, model_version, as_of_draw_date, target_draw_date,
+                 structural_state, persistent_zones, transitions, hypotheses, lines)
+                VALUES (:game, :draw_type, :model_version, :as_of, :target,
+                 CAST(:structural_state AS JSONB), CAST(:persistent_zones AS JSONB),
+                 CAST(:transitions AS JSONB), CAST(:hypotheses AS JSONB), CAST(:lines AS JSONB))
+                RETURNING id
+            """), {
+                "game": req.game, "draw_type": req.draw_type, "model_version": MODEL_VERSION,
+                "as_of": as_of, "target": target,
+                "structural_state": _json.dumps(result['current_state']),
+                "persistent_zones": _json.dumps(result['persistent_zones']),
+                "transitions": _json.dumps(result['transitions']),
+                "hypotheses": _json.dumps(result['hypotheses']),
+                "lines": _json.dumps(result['lines']),
+            })
+            new_id = row.fetchone()[0]
+            conn.commit()
+
+        return {"success": True, "id": new_id, "target_draw_date": str(target), "forecast": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tsf/score")
+def tsf_score(req: TsfScoreRequest):
+    try:
+        from tsf_engine import score_forecast, sum_regime_cutoffs, get_config as _get_config
+        from pattern_engine import load_draws as _load_draws
+        import json as _json
+
+        with engine.connect() as conn:
+            conn.execute(text(TSF_CREATE_TABLE_SQL))
+
+            where = ["scored = FALSE"]
+            params = {}
+            if req.id is not None:
+                where.append("id = :id"); params["id"] = req.id
+            if req.game:
+                where.append("game = :game"); params["game"] = req.game
+            if req.draw_type:
+                where.append("draw_type = :draw_type"); params["draw_type"] = req.draw_type
+
+            pending = conn.execute(text(f"""
+                SELECT id, game, draw_type, target_draw_date, lines
+                FROM tsf_forecasts WHERE {' AND '.join(where)}
+            """), params).fetchall()
+
+            scored_results = []
+            still_pending = 0
+            for fid, fgame, fdraw_type, ftarget, flines in pending:
+                cfg = _get_config(fgame)
+                table = cfg["table"]
+                dp_value = cfg["doubleplay_game_value"]
+                game_value = dp_value if (fdraw_type == "doubleplay" and dp_value) else fgame
+
+                actual = conn.execute(text(f"""
+                    SELECT n1, n2, n3, n4, n5 FROM {table}
+                    WHERE game = :game_value AND draw_date = :target
+                """), {"game_value": game_value, "target": ftarget}).fetchone()
+
+                if not actual:
+                    still_pending += 1
+                    continue
+
+                actual_numbers = list(actual)
+                all_draws = _load_draws(fgame, draw_type=fdraw_type)
+                cutoffs = sum_regime_cutoffs(all_draws)
+
+                scorecard = score_forecast(flines, actual_numbers, cfg["max_num"], cfg["main_count"], cutoffs)
+
+                conn.execute(text("""
+                    UPDATE tsf_forecasts SET
+                    actual_numbers = :actual_numbers, actual_draw_date = :target,
+                    scored = TRUE, scorecard = CAST(:scorecard AS JSONB), scored_at = NOW()
+                    WHERE id = :id
+                """), {
+                    "actual_numbers": ",".join(str(n) for n in sorted(actual_numbers)),
+                    "target": ftarget, "scorecard": _json.dumps(scorecard), "id": fid
+                })
+                scored_results.append({"id": fid, "scorecard": scorecard})
+
+            conn.commit()
+
+        return {"success": True, "scored": scored_results, "still_pending": still_pending}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/tsf/history")
+def tsf_history(game: str = "powerball", draw_type: str = "main", limit: int = 50):
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(TSF_CREATE_TABLE_SQL))
+            conn.commit()
+            rows = conn.execute(text("""
+                SELECT id, game, draw_type, model_version, as_of_draw_date, target_draw_date,
+                       committed_at, hypotheses, lines, actual_numbers, actual_draw_date,
+                       scored, scorecard, scored_at
+                FROM tsf_forecasts
+                WHERE game = :game AND draw_type = :draw_type
+                ORDER BY committed_at DESC LIMIT :limit
+            """), {"game": game, "draw_type": draw_type, "limit": limit}).fetchall()
+        return {"success": True, "forecasts": [
+            {
+                "id": r[0], "game": r[1], "draw_type": r[2], "model_version": r[3],
+                "as_of_draw_date": str(r[4]), "target_draw_date": str(r[5]),
+                "committed_at": str(r[6]), "hypotheses": r[7], "lines": r[8],
+                "actual_numbers": r[9], "actual_draw_date": str(r[10]) if r[10] else None,
+                "scored": r[11], "scorecard": r[12],
+                "scored_at": str(r[13]) if r[13] else None,
+            } for r in rows
+        ]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/tsf/track-record")
+def tsf_track_record(game: str = "powerball", draw_type: str = "main"):
+    try:
+        from tsf_engine import track_record_summary, MODEL_VERSION
+        with engine.connect() as conn:
+            conn.execute(text(TSF_CREATE_TABLE_SQL))
+            conn.commit()
+            rows = conn.execute(text("""
+                SELECT model_version, scorecard FROM tsf_forecasts
+                WHERE game = :game AND draw_type = :draw_type AND scored = TRUE
+            """), {"game": game, "draw_type": draw_type}).fetchall()
+        scored_rows = [{"model_version": r[0], "scorecard": r[1]} for r in rows]
+        summary = track_record_summary(scored_rows, MODEL_VERSION)
+        return {"success": True, "summary": summary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/predict-pattern")
 def predict_pattern(req: PatternPredictRequest):
     try:

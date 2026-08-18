@@ -167,6 +167,7 @@
   <button class="nav-btn" onclick="showPanel('patterns',this)">🔍 Pattern Analysis</button>
   <button class="nav-btn" onclick="showPanel('history',this)">📋 History</button>
   <button class="nav-btn" onclick="showPanel('accuracy',this)">📊 Accuracy</button>
+  <button class="nav-btn" onclick="showPanel('tsf',this)">🧭 Structural Forecast</button>
 </nav>
 
 <div class="content">
@@ -481,6 +482,32 @@
         <div style="font-size:40px;margin-bottom:12px;">🔍</div>
         <div style="font-size:16px;margin-bottom:8px;">Click Run Analysis to begin</div>
         <div style="font-size:13px;">Takes 15-30 seconds · runs 10 different pattern detection algorithms</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STRUCTURAL FORECAST (TSF) -->
+  <div id="panel-tsf" class="panel">
+    <div class="card">
+      <h2>🧭 Structural Forecasting Model</h2>
+      <p class="sub">Transition &amp; Structural Forecasting (TSF) — models how a draw's structure (sum, parity, concentration, consecutive pairs) transitions from one draw to the next, rather than which numbers are "due." No numerology or astrology inputs. Models the 5 main numbers only — the bonus ball is a separate draw from an independent pool and isn't part of this analysis.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <select id="tsf-game" style="width:auto;" onchange="tsfOnGameChange()">
+          <option value="powerball">Powerball</option>
+          <option value="megamillions">Mega Millions</option>
+        </select>
+        <select id="tsf-drawtype" style="width:auto;">
+          <option value="main">Main draws</option>
+          <option value="doubleplay">Double Play draws</option>
+        </select>
+        <button class="btn btn-primary" onclick="runTsfAnalysis()" id="tsf-btn">🧭 Run Analysis</button>
+      </div>
+    </div>
+    <div id="tsf-results">
+      <div style="text-align:center;padding:40px;color:var(--text2);">
+        <div style="font-size:40px;margin-bottom:12px;">🧭</div>
+        <div style="font-size:16px;margin-bottom:8px;">Click Run Analysis to begin</div>
+        <div style="font-size:13px;">Builds a draw-to-draw structural transition model, three competing hypotheses, and three prediction lines</div>
       </div>
     </div>
   </div>
@@ -1975,6 +2002,7 @@ function showPanel(name, btn) {
       loadPatternHistory(histGame);
     });
   }
+  if(name==='tsf') loadTsfHistory();
 }
 
 const MOON_ICONS_P = {'New Moon':'🌑','Waxing Crescent':'🌒','First Quarter':'🌓','Waxing Gibbous':'🌔','Full Moon':'🌕','Waning Gibbous':'🌖','Last Quarter':'🌗','Waning Crescent':'🌘'};
@@ -2563,6 +2591,299 @@ function pmRenderFrequency(result, bonusLabel) {
 }
 
 pmOnGameChange();
+
+// ============================================================
+// TSF STRUCTURAL FORECAST
+// ============================================================
+
+const TSF_DIM_LABELS = {sum_regime:'Sum', parity_regime:'Odd/Even', low_high_regime:'Low/High', concentration_regime:'Concentration', consecutive_regime:'Consecutive pairs'};
+const TSF_LINE_BALL_CLASS = {Primary:'ball-purple', Persistence:'ball-teal', Variance:'ball-amber'};
+
+function tsfOnGameChange() {
+  const game = document.getElementById('tsf-game').value;
+  const drawTypeSel = document.getElementById('tsf-drawtype');
+  drawTypeSel.querySelector('option[value="doubleplay"]').disabled = (game === 'megamillions');
+  if (game === 'megamillions') drawTypeSel.value = 'main';
+}
+
+function tsfConfBadgeClass(conf) {
+  if(conf==='High') return 'badge-vedic';
+  if(conf==='Medium') return 'badge-astro';
+  return 'badge-num';
+}
+
+function tsfBall(n, cls) {
+  return `<span class="ball ${cls||'ball-purple'}" style="width:38px;height:38px;font-size:13px;">${n}</span>`;
+}
+
+async function runTsfAnalysis() {
+  const game = document.getElementById('tsf-game').value;
+  const drawType = document.getElementById('tsf-drawtype').value;
+  const btn = document.getElementById('tsf-btn');
+  btn.innerHTML = '<span class="loader"></span>Analyzing...';
+  btn.disabled = true;
+  document.getElementById('tsf-results').innerHTML = `
+    <div style="text-align:center;padding:40px;color:var(--text2);">
+      <span class="loader" style="width:32px;height:32px;border-width:3px;"></span>
+      <div style="margin-top:16px;font-size:14px;">Building structural transition model on ${game} history...</div>
+    </div>`;
+  try {
+    const res = await fetch(`${API}/tsf/forecast?game=${game}&draw_type=${drawType}`);
+    const data = await res.json();
+    if(data.success) {
+      window.lastTsfResult = data.result;
+      renderTsfDashboard(data.result);
+    } else {
+      document.getElementById('tsf-results').innerHTML = `<div class="alert alert-error">${data.detail || 'Analysis failed'}</div>`;
+    }
+  } catch(e) {
+    document.getElementById('tsf-results').innerHTML = `<div class="alert alert-error">Could not connect to API.</div>`;
+  }
+  btn.innerHTML = '🧭 Run Analysis';
+  btn.disabled = false;
+}
+
+function renderTsfDashboard(r) {
+  const s = r.current_state.state;
+  const regimes = r.current_state.regimes;
+  const prevDeltas = r.current_state.prev_deltas;
+  const maxHist = Math.max(...s.decade_histogram, 1);
+  const decadeRows = r.decade_bins.map((b,i)=>`
+    <div class="freq-row">
+      <div class="freq-num" style="min-width:60px;">${b[0]}-${b[1]}</div>
+      <div class="freq-bg"><div class="freq-fill" style="width:${Math.max(s.decade_histogram[i]/maxHist*100,2)}%;"></div></div>
+      <div class="freq-count">${s.decade_histogram[i]}</div>
+    </div>`).join('');
+
+  const stateCard = `
+    <div class="card" style="border-color:var(--purple);">
+      <h2>🧭 Current Structural State</h2>
+      <p class="sub">${r.current_state.date} · ${r.current_state.numbers.join('-')} · as of ${r.as_of_draw_date} · next draw ${r.target_draw_date}</p>
+      <div class="grid4">
+        <div class="metric"><div class="metric-label">Sum</div><div class="metric-value">${s.sum}</div></div>
+        <div class="metric"><div class="metric-label">Odd / Even</div><div class="metric-value">${s.odd_count}/${s.even_count}</div></div>
+        <div class="metric"><div class="metric-label">Low / High</div><div class="metric-value">${s.low_count}/${s.high_count}</div></div>
+        <div class="metric"><div class="metric-label">Spread</div><div class="metric-value">${s.spread}</div></div>
+        <div class="metric"><div class="metric-label">Consecutive pairs</div><div class="metric-value">${s.consecutive_pairs}</div></div>
+        <div class="metric"><div class="metric-label">Repeats from prev</div><div class="metric-value">${prevDeltas ? prevDeltas.repeat_count : '—'}</div></div>
+        <div class="metric"><div class="metric-label">Repeated last digits</div><div class="metric-value">${prevDeltas ? prevDeltas.repeated_last_digit_count : '—'}</div></div>
+        <div class="metric"><div class="metric-label">Concentration</div><div class="metric-value">${(s.concentration_score*100).toFixed(0)}%</div></div>
+      </div>
+      <div class="section-label" style="margin-top:16px;">Decade distribution</div>
+      ${decadeRows}
+      <div style="margin-top:12px;">
+        <span class="badge ${s.concentration_regime==='concentrated'?'badge-vedic':'badge-astro'}">${s.concentration_regime}</span>
+        <span style="font-size:12px;color:var(--text2);">best window: ${s.best_window[0]}-${s.best_window[1]}</span>
+      </div>
+      <div style="margin-top:8px;">
+        ${Object.entries(regimes).map(([d,v])=>`<span class="badge badge-moon">${TSF_DIM_LABELS[d]||d}: ${v}</span>`).join('')}
+      </div>
+    </div>`;
+
+  const zoneLabelClass = (lbl)=> lbl==='persistent'?'badge-vedic':(lbl==='intermittent'?'badge-astro':'badge-num');
+  const zoneRows = r.decade_bins.map((b,i)=>{
+    const z = r.persistent_zones[i];
+    return `<div class="hist-row">
+      <div class="hist-date">${b[0]}-${b[1]}</div>
+      <div style="flex:1;">
+        <span class="badge ${zoneLabelClass(z.window_10.label)}">10-draw: ${z.window_10.label} (${(z.window_10.coverage*100).toFixed(0)}%)</span>
+        <span class="badge ${zoneLabelClass(z.window_20.label)}">20-draw: ${z.window_20.label} (${(z.window_20.coverage*100).toFixed(0)}%)</span>
+      </div>
+    </div>`;
+  }).join('');
+  const zonesCard = `
+    <div class="card">
+      <h2>📍 Persistent Zones</h2>
+      <p class="sub">How consistently each decade range has been represented — separate from "overdue"</p>
+      ${zoneRows}
+    </div>`;
+
+  const transRows = Object.entries(r.transitions).map(([dim, entry])=>{
+    const vals = Object.entries(entry.to_values).sort((a,b)=>b[1].pct-a[1].pct);
+    const bars = vals.map(([val,stat])=>`
+      <div class="freq-row">
+        <div class="freq-num" style="min-width:90px;">${val}</div>
+        <div class="freq-bg"><div class="freq-fill" style="width:${stat.pct*100}%;"></div></div>
+        <div class="freq-count">${(stat.pct*100).toFixed(0)}%</div>
+        <span class="badge ${tsfConfBadgeClass(stat.confidence)}">${stat.confidence}</span>
+      </div>`).join('');
+    return `<div style="margin-bottom:14px;">
+      <div class="section-label">${TSF_DIM_LABELS[dim]||dim} — currently "${entry.from}" (n=${entry.sample_size})</div>
+      ${bars || '<div style="font-size:12px;color:var(--text2);">Not enough historical data for this exact state</div>'}
+    </div>`;
+  }).join('');
+  const transCard = `
+    <div class="card">
+      <h2>🔀 Structural Transitions</h2>
+      <p class="sub">What plausibly follows the current structure — not "which numbers are overdue"</p>
+      ${transRows}
+    </div>`;
+
+  const hypCards = r.hypotheses.map(h=>`
+    <div class="card" style="margin-bottom:0;">
+      <h2>${h.label}</h2>
+      <p class="sub">${h.name}</p>
+      <span class="badge ${tsfConfBadgeClass(h.confidence)}">${h.confidence} confidence</span>
+      <div style="margin-top:10px;">
+        ${Object.entries(h.target_regimes).map(([d,v])=>`<span class="badge badge-moon">${TSF_DIM_LABELS[d]||d}: ${v}</span>`).join('')}
+      </div>
+      <p style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.5;">${h.rationale}</p>
+    </div>`).join('');
+  const hypSection = `
+    <div class="card">
+      <h2>🧠 Competing Hypotheses</h2>
+      <div class="grid3">${hypCards}</div>
+    </div>`;
+
+  const lineCards = r.lines.map(l=>`
+    <div class="card" style="margin-bottom:0;">
+      <h2>${l.hypothesis}</h2>
+      <div class="balls-row">${l.numbers.map(n=>tsfBall(n, TSF_LINE_BALL_CLASS[l.hypothesis])).join('')}</div>
+      <div class="grid2" style="margin-top:10px;">
+        <div class="metric"><div class="metric-label">Sum</div><div class="metric-value">${l.sum}</div></div>
+        <div class="metric"><div class="metric-label">Odd/Even</div><div class="metric-value">${l.odd_count}/${l.even_count}</div></div>
+        <div class="metric"><div class="metric-label">Low/High</div><div class="metric-value">${l.low_count}/${l.high_count}</div></div>
+        <div class="metric"><div class="metric-label">Consecutive</div><div class="metric-value">${l.consecutive_pairs}</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-top:8px;">Matched ${l.matched_dimensions}/${l.total_dimensions} target dimensions</div>
+      <p style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.5;">${l.why}</p>
+    </div>`).join('');
+  const linesSection = `
+    <div class="card">
+      <h2>🎯 Three Prediction Lines</h2>
+      <p class="sub">Main numbers only — TSF doesn't model the bonus ball.</p>
+      <div class="grid3">${lineCards}</div>
+    </div>`;
+
+  const commitCard = `
+    <div class="card">
+      <h2>🔒 Commit This Forecast</h2>
+      <p class="sub">Locks in these 3 lines for ${r.target_draw_date} before the result is known, so it can be scored honestly afterward.</p>
+      <button class="btn btn-primary" onclick="commitTsfForecast()" id="tsf-commit-btn">Commit forecast for ${r.target_draw_date}</button>
+      <div id="tsf-commit-result"></div>
+    </div>`;
+
+  const trackRecordCard = `
+    <div class="card">
+      <h2>📈 Track Record</h2>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
+        <button class="btn" onclick="scoreTsfPending()" id="tsf-score-btn">Score pending forecasts</button>
+      </div>
+      <div id="tsf-track-summary"></div>
+      <div id="tsf-history-list" style="margin-top:12px;"></div>
+    </div>`;
+
+  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + transCard + hypSection + linesSection + commitCard + trackRecordCard;
+  loadTsfHistory();
+}
+
+async function commitTsfForecast() {
+  const r = window.lastTsfResult;
+  if(!r) return;
+  const btn = document.getElementById('tsf-commit-btn');
+  btn.disabled = true;
+  const resultEl = document.getElementById('tsf-commit-result');
+  try {
+    const res = await fetch(`${API}/tsf/commit`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ game: r.game, draw_type: r.draw_type })
+    });
+    const data = await res.json();
+    if(res.ok && data.success) {
+      resultEl.innerHTML = `<div class="alert alert-success">Committed forecast for ${data.target_draw_date} (id ${data.id}).</div>`;
+    } else {
+      resultEl.innerHTML = `<div class="alert alert-error">${data.detail || 'Commit failed'}</div>`;
+      btn.disabled = false;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<div class="alert alert-error">Could not connect to API.</div>`;
+    btn.disabled = false;
+  }
+  loadTsfHistory();
+}
+
+async function loadTsfHistory() {
+  const gameSel = document.getElementById('tsf-game');
+  const drawSel = document.getElementById('tsf-drawtype');
+  if(!gameSel) return;
+  const game = gameSel.value;
+  const drawType = drawSel.value;
+  try {
+    const [histRes, trackRes] = await Promise.all([
+      fetch(`${API}/tsf/history?game=${game}&draw_type=${drawType}`),
+      fetch(`${API}/tsf/track-record?game=${game}&draw_type=${drawType}`)
+    ]);
+    const histData = await histRes.json();
+    const trackData = await trackRes.json();
+    renderTsfTrackRecord(histData.forecasts || [], trackData.summary || null);
+  } catch(e) { /* results container may not be rendered yet */ }
+}
+
+function renderTsfTrackRecord(forecasts, summary) {
+  const summaryEl = document.getElementById('tsf-track-summary');
+  const listEl = document.getElementById('tsf-history-list');
+  if(!summaryEl || !listEl) return;
+
+  if(summary && summary.scored_count > 0) {
+    summaryEl.innerHTML = `
+      <div class="section-label">Per-dimension hit rate (${summary.scored_count} scored forecast${summary.scored_count===1?'':'s'})</div>
+      <div class="grid3">
+        ${Object.entries(summary.by_hypothesis).map(([label, agg])=>`
+          <div class="metric">
+            <div class="metric-label">${label} · avg ${agg.avg_exact_hits} hits</div>
+            <div style="font-size:12px;margin-top:6px;line-height:1.7;">
+              Sum: ${agg.sum_regime_correct_pct}% · Parity: ${agg.parity_correct_pct}%<br>
+              Low/High: ${agg.low_high_correct_pct}% · Concentration: ${agg.concentration_correct_pct}%<br>
+              Consecutive: ${agg.consecutive_regime_correct_pct}% · Range: ${agg.range_distribution_correct_pct}%
+            </div>
+          </div>`).join('')}
+      </div>`;
+  } else {
+    summaryEl.innerHTML = `<div style="font-size:13px;color:var(--text2);">No scored forecasts yet — commit one, then score it after the drawing.</div>`;
+  }
+
+  if(forecasts.length === 0) {
+    listEl.innerHTML = `<div style="font-size:13px;color:var(--text2);">No committed forecasts yet.</div>`;
+    return;
+  }
+  listEl.innerHTML = forecasts.map(f=>`
+    <div class="hist-row">
+      <div class="hist-date">${f.target_draw_date}</div>
+      <div style="flex:1;font-size:12px;color:var(--text2);">
+        committed ${f.committed_at.slice(0,16).replace('T',' ')}
+        ${f.scored ? ' · exact hits: ' + f.scorecard.lines.map(l=>l.hypothesis+' '+l.exact_hits).join(', ') : ''}
+      </div>
+      <div>${f.scored ? '<span class="badge badge-vedic">Scored</span>' : '<span class="badge badge-astro">Pending</span>'}</div>
+    </div>`).join('');
+
+  if(window.lastTsfResult) {
+    const already = forecasts.find(f=>f.target_draw_date === window.lastTsfResult.target_draw_date);
+    const btn = document.getElementById('tsf-commit-btn');
+    if(btn && already) {
+      btn.disabled = true;
+      btn.textContent = `Already committed for ${already.target_draw_date}`;
+    }
+  }
+}
+
+async function scoreTsfPending() {
+  const gameSel = document.getElementById('tsf-game');
+  const drawSel = document.getElementById('tsf-drawtype');
+  const btn = document.getElementById('tsf-score-btn');
+  btn.disabled = true;
+  btn.textContent = 'Scoring...';
+  try {
+    const res = await fetch(`${API}/tsf/score`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ game: gameSel.value, draw_type: drawSel.value })
+    });
+    await res.json();
+    loadTsfHistory();
+  } catch(e) {}
+  btn.disabled = false;
+  btn.textContent = 'Score pending forecasts';
+}
+
 </script>
 </body>
 </html>
