@@ -2819,6 +2819,27 @@ async function loadTsfHistory() {
   } catch(e) { /* results container may not be rendered yet */ }
 }
 
+const TSF_SCORED_DIMS = [
+  ['Sum', 'sum_regime_correct'],
+  ['Parity', 'parity_correct'],
+  ['Low/High', 'low_high_correct'],
+  ['Concentration', 'concentration_correct'],
+  ['Consecutive', 'consecutive_regime_correct'],
+  ['Range', 'range_distribution_correct'],
+];
+
+function tsfDimCount(lineScorecard) {
+  const matched = TSF_SCORED_DIMS.filter(([,key])=>lineScorecard[key]).length;
+  return { matched, total: TSF_SCORED_DIMS.length };
+}
+
+function tsfBallsWithHits(numbers, actualSet, cls) {
+  return numbers.map(n=>{
+    const hit = actualSet && actualSet.has(n);
+    return `<span class="ball ${hit?'ball-coral':(cls||'ball-purple')}" style="width:32px;height:32px;font-size:12px;" title="${hit?'Matched the actual draw':''}">${n}</span>`;
+  }).join('');
+}
+
 function renderTsfTrackRecord(forecasts, summary) {
   const summaryEl = document.getElementById('tsf-track-summary');
   const listEl = document.getElementById('tsf-history-list');
@@ -2837,7 +2858,8 @@ function renderTsfTrackRecord(forecasts, summary) {
               Consecutive: ${agg.consecutive_regime_correct_pct}% · Range: ${agg.range_distribution_correct_pct}%
             </div>
           </div>`).join('')}
-      </div>`;
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-top:10px;">⚠ Exact hits are noisy at small sample sizes — a single lucky number is common by chance and doesn't mean a line was structurally better. The per-dimension percentages above are the more reliable signal, especially with few scored forecasts.</div>`;
   } else {
     summaryEl.innerHTML = `<div style="font-size:13px;color:var(--text2);">No scored forecasts yet — commit one, then score it after the drawing.</div>`;
   }
@@ -2846,15 +2868,46 @@ function renderTsfTrackRecord(forecasts, summary) {
     listEl.innerHTML = `<div style="font-size:13px;color:var(--text2);">No committed forecasts yet.</div>`;
     return;
   }
-  listEl.innerHTML = forecasts.map(f=>`
-    <div class="hist-row">
-      <div class="hist-date">${f.target_draw_date}</div>
-      <div style="flex:1;font-size:12px;color:var(--text2);">
-        committed ${f.committed_at.slice(0,16).replace('T',' ')}
-        ${f.scored ? ' · exact hits: ' + f.scorecard.lines.map(l=>l.hypothesis+' '+l.exact_hits).join(', ') : ''}
+
+  listEl.innerHTML = forecasts.map(f=>{
+    const detailId = `tsf-detail-${f.id}`;
+    const actualNums = f.actual_numbers ? f.actual_numbers.split(',').map(Number) : null;
+    const actualSet = actualNums ? new Set(actualNums) : null;
+
+    const lineSummary = f.scored ? f.lines.map(l=>{
+      const sc = f.scorecard.lines.find(s=>s.hypothesis===l.hypothesis);
+      const dc = tsfDimCount(sc);
+      return `${l.hypothesis}: ${sc.exact_hits} hit${sc.exact_hits===1?'':'s'} · ${dc.matched}/${dc.total} dimensions`;
+    }).join(' &nbsp;·&nbsp; ') : '';
+
+    const detailHtml = `
+      <div id="${detailId}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        ${actualNums ? `<div style="margin-bottom:10px;"><div class="section-label">Actual draw</div><div class="balls-row">${actualNums.map(n=>`<span class="ball ball-teal" style="width:32px;height:32px;font-size:12px;">${n}</span>`).join('')}</div></div>` : ''}
+        ${f.lines.map(l=>{
+          const sc = f.scored ? f.scorecard.lines.find(s=>s.hypothesis===l.hypothesis) : null;
+          const dc = sc ? tsfDimCount(sc) : null;
+          return `
+          <div style="margin-bottom:12px;">
+            <div class="section-label">${l.hypothesis}${sc?` — ${sc.exact_hits} exact hit${sc.exact_hits===1?'':'s'} · ${dc.matched}/${dc.total} dimensions`:' — pending'}</div>
+            <div class="balls-row">${tsfBallsWithHits(l.numbers, actualSet, TSF_LINE_BALL_CLASS[l.hypothesis])}</div>
+            ${sc ? `<div style="margin-top:4px;">${TSF_SCORED_DIMS.map(([label,key])=>`<span class="badge ${sc[key]?'badge-vedic':'badge-num'}">${sc[key]?'✓':'✗'} ${label}</span>`).join('')}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
+
+    return `<div class="hist-row" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="hist-date">${f.target_draw_date}</div>
+        <div style="flex:1;font-size:12px;color:var(--text2);">
+          committed ${f.committed_at.slice(0,16).replace('T',' ')}
+          ${lineSummary ? '<br>' + lineSummary : ''}
+        </div>
+        <span class="badge ${f.scored?'badge-vedic':'badge-astro'}">${f.scored?'Scored':'Pending'}</span>
+        <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="const d=document.getElementById('${detailId}'); d.style.display = d.style.display==='none'?'block':'none';">Details</button>
       </div>
-      <div>${f.scored ? '<span class="badge badge-vedic">Scored</span>' : '<span class="badge badge-astro">Pending</span>'}</div>
-    </div>`).join('');
+      ${detailHtml}
+    </div>`;
+  }).join('');
 
   if(window.lastTsfResult) {
     const already = forecasts.find(f=>f.target_draw_date === window.lastTsfResult.target_draw_date);
