@@ -446,27 +446,33 @@ def _primary_target(entry, frm_val):
     return max(entry['to_values'], key=lambda v: entry['to_values'][v]['pct'])
 
 
-# v1 (Florida Lotto) validated a dimension-specific preference for the
-# neighbor signal over the aggregate on disagreement (see v1's
-# tsf_engine.py for the held-out backtest that supported it), but running
-# the identical backtest against v2's games did NOT support porting that
-# same preference here: Powerball and Mega Millions disagree with the
-# aggregate on most dimensions far less often than Florida Lotto does
-# (too few cases to say anything), and the one dimension with enough
-# disagreement volume to test (sum_regime) gave contradictory results
-# between the two games -- Powerball's train/test split modestly
-# supported preferring neighbor (37%->39% held out), but Mega Millions'
-# flipped direction entirely between train (aggregate favored, 42% vs
-# 22%) and test (neighbor favored, 38% vs 19%), which is a sign of noise
-# rather than real signal given v2's smaller disagreement samples. Left
-# empty rather than force a shared, unvalidated preference across both
-# games; re-run the backtest as more data accumulates.
-NEIGHBOR_PREFERRED_DIMS = set()
+# Validated per-game via a held-out backtest (12 months of history,
+# point-in-time-correct so no lookahead, derived on the older half and
+# confirmed on the newer half it never saw) -- matches v1's approach
+# after the same methodology showed Florida Lotto and Jackpot Triple
+# Play needed different calibrations too. Powerball and Mega Millions
+# don't agree with each other either.
+#
+# powerball: neighbor more accurate for sum_regime on disagreement (37%
+# vs 26% train, n=54; held to 33% vs 29% out-of-sample, n=48 -- the
+# large, consistent sample that makes this trustworthy). Every other
+# dimension had too few disagreement cases (0-7) to test at all.
+#
+# megamillions: sum_regime flipped direction between train (aggregate
+# favored, 42% vs 22%) and test (neighbor favored, 41% vs 7%) -- a sign
+# of noise, not signal, so left out. Every other dimension also had too
+# few disagreement cases (0-6) to test. Left empty rather than force an
+# unvalidated preference; re-run the backtest as more data accumulates.
+NEIGHBOR_PREFERRED_DIMS_BY_GAME = {
+    'powerball': {'sum_regime'},
+    'megamillions': set(),
+}
 
 
-def _primary_target_with_neighbor(d, frm_val, entry, neighbor_signal):
+def _primary_target_with_neighbor(d, frm_val, entry, neighbor_signal, game):
     agg_tgt = _primary_target(entry, frm_val)
-    if d not in NEIGHBOR_PREFERRED_DIMS:
+    preferred_dims = NEIGHBOR_PREFERRED_DIMS_BY_GAME.get(game, set())
+    if d not in preferred_dims:
         return agg_tgt
     neighbor_val, _ = _neighbor_top(neighbor_signal, d)
     if neighbor_val is not None and neighbor_val != agg_tgt:
@@ -494,7 +500,7 @@ def _weakest_link(confs):
 NEIGHBOR_AGREEMENT_BONUS = {'Low': 'Medium', 'Medium': 'High', 'High': 'High'}
 
 
-def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None):
+def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None, game=None):
     hypotheses = []
 
     def _line(label, name, target_fn):
@@ -558,7 +564,7 @@ def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None):
                 return neighbor_val
         return _variance_target(d, frm, e)
 
-    hypotheses.append(_line('Primary', 'Most likely transition', lambda d, frm, e: _primary_target_with_neighbor(d, frm, e, neighbor_signal)))
+    hypotheses.append(_line('Primary', 'Most likely transition', lambda d, frm, e: _primary_target_with_neighbor(d, frm, e, neighbor_signal, game)))
     hypotheses.append(_line('Persistence', 'Persistence / continuation scenario', lambda d, frm, e: frm))
     hypotheses.append(_line('Variance', 'Variance / reversal scenario', _variance_target_with_neighbor))
 
@@ -784,7 +790,7 @@ def tsf_forecast(game='powerball', draw_type='main'):
     transitions = structural_transitions(series)
     lookup = transition_lookup(transitions, current['regimes'], series)
     neighbor_signal = neighbor_structural_signal(game, max_num, main_count, cutoffs) if draw_type == 'main' else None
-    hypotheses = build_hypotheses(current['regimes'], lookup, cfg, neighbor_signal)
+    hypotheses = build_hypotheses(current['regimes'], lookup, cfg, neighbor_signal, game)
 
     freq_data = frequency_analysis(draws)
     gap_data = gap_analysis(draws, max_num)
