@@ -552,16 +552,30 @@ def generate_lines(pool, hypotheses, max_num, main_count, cutoffs, decade_bins, 
     for hyp in hypotheses:
         tilted = _tilt_pool(pool, hyp['label'], decade_bins, persistent)
         target = hyp['target_regimes']
-        best, best_state, best_regimes, best_score = None, None, None, -1
+        best_score = -1
+        tied = []  # every candidate seen so far at the current best_score
         for _ in range(attempts):
             candidate = _weighted_pick(tilted, main_count)
             state = structural_state(candidate, max_num)
             regimes = classify_regimes(state, cutoffs, main_count)
             matches = sum(1 for d, v in target.items() if regimes.get(d) == v)
             if matches > best_score:
-                best, best_state, best_regimes, best_score = candidate, state, regimes, matches
-            if best_score == len(target):
-                break
+                best_score = matches
+                tied = [(candidate, state, regimes)]
+            elif matches == best_score:
+                tied.append((candidate, state, regimes))
+        # Multiple target regimes can reinforce the same direction at once
+        # (e.g. low sum + low-heavy + concentrated + multiple-consecutive all
+        # point toward "small clustered numbers"), and the fastest way for
+        # random sampling to satisfy all of them simultaneously is an
+        # extreme, tightly-packed cluster (e.g. 1-2-3-5-59) -- which reads as
+        # a suspicious pattern even though it's a legitimate boolean match.
+        # Keeping only the first candidate to reach a score would lock in
+        # whichever extreme the random walk happened to hit first; picking
+        # the widest-spread candidate among every tie at the best score
+        # keeps the same target regimes while favoring a more representative
+        # (less artificially bunched) instance of that structure.
+        best, best_state, best_regimes = max(tied, key=lambda t: t[1]['spread'])
         lines.append({
             'hypothesis': hyp['label'],
             'name': hyp['name'],
