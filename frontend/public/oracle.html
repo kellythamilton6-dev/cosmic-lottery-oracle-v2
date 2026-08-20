@@ -2881,6 +2881,7 @@ function renderTsfTrackRecord(forecasts, summary) {
     const detailId = `tsf-detail-${f.id}`;
     const actualNums = f.actual_numbers ? f.actual_numbers.split(',').map(Number) : null;
     const actualSet = actualNums ? new Set(actualNums) : null;
+    const isReconstructed = f.model_version && f.model_version.includes('reconstructed');
 
     const lineSummary = f.scored ? f.lines.map(l=>{
       const sc = f.scorecard.lines.find(s=>s.hypothesis===l.hypothesis);
@@ -2890,6 +2891,7 @@ function renderTsfTrackRecord(forecasts, summary) {
 
     const detailHtml = `
       <div id="${detailId}" style="display:block;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        ${isReconstructed ? '<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">⚠ This forecast was rebuilt after the fact from pre-draw history because the original commit was lost -- the hypotheses and target regimes match what would have been generated, but the exact line numbers are a fresh random draw, not the original. Excluded from the per-dimension hit-rate stats above.</div>' : ''}
         <div style="display:flex;flex-direction:column;gap:10px;overflow-x:auto;">
           ${actualNums ? `
           <div style="display:flex;align-items:center;gap:14px;">
@@ -2923,6 +2925,7 @@ function renderTsfTrackRecord(forecasts, summary) {
           committed ${f.committed_at.slice(0,16).replace('T',' ')}
           ${lineSummary ? '<br>' + lineSummary : ''}
         </div>
+        ${isReconstructed ? '<span class="badge badge-num" title="Rebuilt after the fact from pre-draw history -- not an original advance commitment.">Reconstructed</span>' : ''}
         <span class="badge ${f.scored?'badge-vedic':'badge-astro'}">${f.scored?'Scored':'Pending'}</span>
         <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" id="tsf-detail-toggle-${f.id}" onclick="tsfToggleDetail(${f.id})">Hide details</button>
       </div>
