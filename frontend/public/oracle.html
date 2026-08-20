@@ -2980,11 +2980,14 @@ function renderTsfTrackRecord(forecasts, summary) {
     const actualSet = actualNums ? new Set(actualNums) : null;
     const isReconstructed = f.model_version && f.model_version.includes('reconstructed');
 
-    const lineSummary = f.scored ? f.lines.map(l=>{
-      const sc = f.scorecard.lines.find(s=>s.hypothesis===l.hypothesis);
-      const dc = tsfDimCount(sc);
-      return `${l.hypothesis}: ${sc.exact_hits} hit${sc.exact_hits===1?'':'s'} · ${dc.matched}/${dc.total} dimensions`;
-    }).join(' &nbsp;·&nbsp; ') : '';
+    const lineSummary = f.lines.map(l=>{
+      if (f.scored) {
+        const sc = f.scorecard.lines.find(s=>s.hypothesis===l.hypothesis);
+        const dc = tsfDimCount(sc);
+        return `${l.hypothesis}: ${sc.exact_hits} hit${sc.exact_hits===1?'':'s'} · ${dc.matched}/${dc.total} dimensions`;
+      }
+      return `${l.hypothesis}: ${l.numbers.join('-')}`;
+    }).join(' &nbsp;·&nbsp; ');
 
     const detailHtml = `
       <div id="${detailId}" style="display:block;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
