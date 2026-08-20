@@ -2882,17 +2882,30 @@ function renderTsfTrackRecord(forecasts, summary) {
 
     const detailHtml = `
       <div id="${detailId}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-        ${actualNums ? `<div style="margin-bottom:10px;"><div class="section-label">Actual draw</div><div class="balls-row">${actualNums.map(n=>`<span class="ball ball-teal" style="width:32px;height:32px;font-size:12px;">${n}</span>`).join('')}</div></div>` : ''}
-        ${f.lines.map(l=>{
-          const sc = f.scored ? f.scorecard.lines.find(s=>s.hypothesis===l.hypothesis) : null;
-          const dc = sc ? tsfDimCount(sc) : null;
-          return `
-          <div style="margin-bottom:12px;">
-            <div class="section-label">${l.hypothesis}${sc?` — ${sc.exact_hits} exact hit${sc.exact_hits===1?'':'s'} · ${dc.matched}/${dc.total} dimensions`:' — pending'}</div>
-            <div class="balls-row">${tsfBallsWithHits(l.numbers, actualSet, TSF_LINE_BALL_CLASS[l.hypothesis])}</div>
-            ${sc ? `<div style="margin-top:4px;">${TSF_SCORED_DIMS.map(([label,key])=>`<span class="badge ${sc[key]?'badge-vedic':'badge-num'}">${sc[key]?'✓':'✗'} ${label}</span>`).join('')}</div>` : ''}
-          </div>`;
-        }).join('')}
+        <div style="display:flex;flex-direction:column;gap:10px;overflow-x:auto;">
+          ${actualNums ? `
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="min-width:100px;font-size:12px;color:var(--text2);font-weight:600;flex-shrink:0;">Actual draw</div>
+            <div class="balls-row" style="margin:0;flex-wrap:nowrap;">${actualNums.map(n=>`<span class="ball ball-teal" style="width:30px;height:30px;font-size:12px;flex-shrink:0;">${n}</span>`).join('')}</div>
+          </div>` : ''}
+          ${f.lines.map(l=>{
+            const sc = f.scored ? f.scorecard.lines.find(s=>s.hypothesis===l.hypothesis) : null;
+            const dc = sc ? tsfDimCount(sc) : null;
+            return `
+            <div style="display:flex;align-items:center;gap:14px;">
+              <div style="min-width:100px;font-size:12px;color:var(--text2);font-weight:600;flex-shrink:0;">${l.hypothesis}</div>
+              <div class="balls-row" style="margin:0;flex-wrap:nowrap;">${tsfBallsWithHits(l.numbers, actualSet, TSF_LINE_BALL_CLASS[l.hypothesis])}</div>
+              <div style="font-size:11px;color:var(--text2);white-space:nowrap;">${sc ? `${sc.exact_hits} hit${sc.exact_hits===1?'':'s'} · ${dc.matched}/${dc.total} dims` : 'pending'}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:14px;">
+          ${f.lines.map(l=>{
+            const sc = f.scored ? f.scorecard.lines.find(s=>s.hypothesis===l.hypothesis) : null;
+            if(!sc) return '';
+            return `<div style="margin-bottom:6px;"><span style="font-size:11px;color:var(--text2);margin-right:6px;">${l.hypothesis}:</span>${TSF_SCORED_DIMS.map(([label,key])=>`<span class="badge ${sc[key]?'badge-vedic':'badge-num'}">${sc[key]?'✓':'✗'} ${label}</span>`).join('')}</div>`;
+          }).join('')}
+        </div>
       </div>`;
 
     return `<div class="hist-row" style="flex-direction:column;align-items:stretch;">
