@@ -2840,6 +2840,14 @@ function tsfBallsWithHits(numbers, actualSet, cls) {
   }).join('');
 }
 
+function tsfToggleDetail(id) {
+  const d = document.getElementById('tsf-detail-'+id);
+  const btn = document.getElementById('tsf-detail-toggle-'+id);
+  const show = d.style.display === 'none';
+  d.style.display = show ? 'block' : 'none';
+  if(btn) btn.textContent = show ? 'Hide details' : 'Details';
+}
+
 function renderTsfTrackRecord(forecasts, summary) {
   const summaryEl = document.getElementById('tsf-track-summary');
   const listEl = document.getElementById('tsf-history-list');
@@ -2881,7 +2889,7 @@ function renderTsfTrackRecord(forecasts, summary) {
     }).join(' &nbsp;·&nbsp; ') : '';
 
     const detailHtml = `
-      <div id="${detailId}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <div id="${detailId}" style="display:block;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
         <div style="display:flex;flex-direction:column;gap:10px;overflow-x:auto;">
           ${actualNums ? `
           <div style="display:flex;align-items:center;gap:14px;">
@@ -2916,7 +2924,7 @@ function renderTsfTrackRecord(forecasts, summary) {
           ${lineSummary ? '<br>' + lineSummary : ''}
         </div>
         <span class="badge ${f.scored?'badge-vedic':'badge-astro'}">${f.scored?'Scored':'Pending'}</span>
-        <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="const d=document.getElementById('${detailId}'); d.style.display = d.style.display==='none'?'block':'none';">Details</button>
+        <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" id="tsf-detail-toggle-${f.id}" onclick="tsfToggleDetail(${f.id})">Hide details</button>
       </div>
       ${detailHtml}
     </div>`;
