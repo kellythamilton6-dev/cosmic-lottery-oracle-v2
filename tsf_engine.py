@@ -64,6 +64,8 @@ MIN_TRANSITION_SAMPLE = 30             # below this, confidence is forced Low
 LIFT_HIGH = 1.15                       # observed/baseline ratio for High confidence
 LIFT_LOW = 0.9                         # below this, less likely than baseline => Low
 HIGH_SAMPLE_FOR_HIGH_CONF = 100
+NEIGHBOR_K = 15                        # how many structurally similar past draws to consider
+NEIGHBOR_MIN_SAMPLE_FOR_SIGNAL = 8      # below this many followups on record, ignore the signal
 MODEL_VERSION = "tsf-v1"
 
 DIMENSIONS = ['sum_regime', 'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime']
@@ -367,6 +369,74 @@ def transition_lookup(transitions_result, current_regimes, series):
     return lookup
 
 # ============================================================
+# 3b. NEAREST-NEIGHBOR STRUCTURAL SIGNAL
+# Complements structural_transitions()'s whole-history aggregate (every
+# draw sharing just the current from-value on one dimension) with a
+# conditioned-on-shape signal: of the K historical draws most similar to
+# the CURRENT draw overall (via match_engine's similarity search, the same
+# engine behind the Pattern Match tab), what did the draw that followed
+# each of them actually look like structurally? Smaller, noisier sample
+# than the aggregate table, so it's blended in as corroboration/dissent
+# rather than a replacement -- see build_hypotheses().
+# ============================================================
+
+def neighbor_structural_signal(game, max_num, main_count, cutoffs, k=NEIGHBOR_K):
+    """Only supported for the main stream -- match_engine's similarity
+    search has no equivalent Double Play stream isolation, so this
+    returns None for draw_type='doubleplay' rather than mixing streams."""
+    from match_engine import pattern_match
+
+    result = pattern_match(game, limit=k)
+    if not result:
+        return None
+
+    regime_tally = {d: Counter() for d in DIMENSIONS}
+    number_counts = Counter()
+    sample_size = 0
+    match_summaries = []
+    for m in result['matches']:
+        nd = m.get('next_drawing')
+        if not nd:
+            continue
+        sample_size += 1
+        followup_state = structural_state(nd['numbers'], max_num)
+        followup_regimes = classify_regimes(followup_state, cutoffs, main_count)
+        for d in DIMENSIONS:
+            regime_tally[d][followup_regimes[d]] += 1
+        for n in nd['numbers']:
+            number_counts[n] += 1
+        match_summaries.append({
+            'date': m['date'],
+            'numbers': m['numbers'],
+            'similarity': m['score'],
+            'next_drawing': {'date': nd['date'], 'numbers': nd['numbers']},
+        })
+
+    by_dimension = {}
+    for d in DIMENSIONS:
+        total = sum(regime_tally[d].values())
+        if total:
+            by_dimension[d] = {val: {'count': c, 'pct': round(c / total, 4)} for val, c in regime_tally[d].items()}
+
+    return {
+        'sample_size': sample_size,
+        'k_requested': k,
+        'matches': match_summaries,
+        'by_dimension': by_dimension,
+        'top_numbers': [{'number': n, 'count': c} for n, c in number_counts.most_common(15)],
+    }
+
+
+def _neighbor_top(neighbor_signal, dim):
+    if not neighbor_signal or neighbor_signal['sample_size'] < NEIGHBOR_MIN_SAMPLE_FOR_SIGNAL:
+        return None, None
+    dist = neighbor_signal['by_dimension'].get(dim)
+    if not dist:
+        return None, None
+    top_val = max(dist, key=lambda v: dist[v]['pct'])
+    return top_val, dist[top_val]['pct']
+
+# ============================================================
 # 4. THREE COMPETING HYPOTHESES (step 4)
 # ============================================================
 
@@ -392,7 +462,10 @@ def _weakest_link(confs):
     return min(vals, key=lambda c: CONF_RANK[c]) if vals else 'Low'
 
 
-def build_hypotheses(current_regimes, lookup, cfg):
+NEIGHBOR_AGREEMENT_BONUS = {'Low': 'Medium', 'Medium': 'High', 'High': 'High'}
+
+
+def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None):
     hypotheses = []
 
     def _line(label, name, target_fn):
@@ -403,15 +476,39 @@ def build_hypotheses(current_regimes, lookup, cfg):
             tgt = target_fn(d, frm_val, entry)
             stat = entry['to_values'].get(tgt)
             conf = stat['confidence'] if stat else 'Low'
+
+            # Corroborate/dissent against the K most structurally similar
+            # historical draws, when there's enough of them with a
+            # followup on record to say anything -- only meaningfully
+            # applied to Primary (Persistence's target is always "stay put"
+            # by construction; Variance's target_fn already consults the
+            # neighbor signal itself, see _variance_target_with_neighbor).
+            neighbor_note = ''
+            if label == 'Primary':
+                neighbor_val, neighbor_pct = _neighbor_top(neighbor_signal, d)
+                if neighbor_val is not None:
+                    if neighbor_val == tgt:
+                        conf = NEIGHBOR_AGREEMENT_BONUS.get(conf, conf)
+                        neighbor_note = (
+                            f" The {neighbor_signal['sample_size']} most structurally similar historical "
+                            f"draws agree ({neighbor_pct*100:.0f}% of their followups landed here too)."
+                        )
+                    else:
+                        neighbor_note = (
+                            f" Note: the {neighbor_signal['sample_size']} most structurally similar historical "
+                            f"draws leaned toward \"{neighbor_val}\" instead ({neighbor_pct*100:.0f}%) -- kept "
+                            f"the larger-sample whole-history value here since it's more stable."
+                        )
+
             targets[d], confs[d] = tgt, conf
             if stat:
                 parts.append(
                     f"{DIM_LABELS[d]}: {frm_val}→{tgt} occurred in {stat['pct']*100:.0f}% of "
                     f"{entry['sample_size']} comparable draws (baseline {stat['baseline_pct']*100:.0f}%, "
-                    f"lift {stat['lift']}) — {conf} confidence."
+                    f"lift {stat['lift']}) — {conf} confidence.{neighbor_note}"
                 )
             else:
-                parts.append(f"{DIM_LABELS[d]}: {frm_val}→{tgt} has no precedent in this exact state — Low confidence.")
+                parts.append(f"{DIM_LABELS[d]}: {frm_val}→{tgt} has no precedent in this exact state — Low confidence.{neighbor_note}")
         return {
             'label': label,
             'name': name,
@@ -421,9 +518,20 @@ def build_hypotheses(current_regimes, lookup, cfg):
             'rationale': ' '.join(parts),
         }
 
+    def _variance_target_with_neighbor(d, frm, e):
+        # Prefer the neighbor-favored alternative as a more evidence-
+        # grounded reversal candidate than the generic opposite-flip, but
+        # only when it's actually been observed historically from this
+        # exact from-state (never propose an unprecedented transition).
+        neighbor_val, _ = _neighbor_top(neighbor_signal, d)
+        if neighbor_val is not None and neighbor_val != frm:
+            if neighbor_val in e['to_values'] and e['to_values'][neighbor_val]['count'] > 0:
+                return neighbor_val
+        return _variance_target(d, frm, e)
+
     hypotheses.append(_line('Primary', 'Most likely transition', lambda d, frm, e: _primary_target(e, frm)))
     hypotheses.append(_line('Persistence', 'Persistence / continuation scenario', lambda d, frm, e: frm))
-    hypotheses.append(_line('Variance', 'Variance / reversal scenario', _variance_target))
+    hypotheses.append(_line('Variance', 'Variance / reversal scenario', _variance_target_with_neighbor))
 
     return hypotheses
 
@@ -467,7 +575,7 @@ def concentration_profile(series, n=STRUCTURAL_WINDOW_SHORT):
 # 9/10. CANDIDATE POOL AND PREDICTION LINES (steps 9-10)
 # ============================================================
 
-def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_data, gap_data, decade_bins, current_numbers):
+def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_data, gap_data, decade_bins, current_numbers, neighbor_signal=None):
     """One shared {number: score} pool for all three lines, weighted to
     the user's stated Tier 1/2/3 hierarchy -- deliberately NOT
     pattern_predict()'s frequency/Markov/moon-weighted scorer, which is
@@ -475,7 +583,18 @@ def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_
     contaminated)."""
     pool = {n: 1.0 for n in range(1, max_num + 1)}  # small floor keeps every number reachable
 
-    # Tier 1 (45%): decade-bin persistence
+    # Tier 1 (45%): decade-bin persistence, split with nearest-neighbor
+    # follow-up frequency (which specific numbers followed the K
+    # structurally similar historical draws) when there's enough of a
+    # sample to say anything -- purely additive: falls back to the
+    # original 45%-persistence-alone calibration when the neighbor signal
+    # isn't available (e.g. draw_type='doubleplay', or too few of the K
+    # matches have a followup drawing on record yet), so this never dilutes
+    # the existing signal, only supplements it.
+    has_neighbor = neighbor_signal and neighbor_signal['sample_size'] >= NEIGHBOR_MIN_SAMPLE_FOR_SIGNAL
+    persistence_weight = 30.0 if has_neighbor else 45.0
+    neighbor_weight = 15.0 if has_neighbor else 0.0
+
     persistence_by_num = {}
     for bidx, (lo, hi) in enumerate(decade_bins):
         info = persistent[bidx]
@@ -484,7 +603,13 @@ def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_
             persistence_by_num[n] = score
     max_pers = max(persistence_by_num.values()) if persistence_by_num else 1
     for n in range(1, max_num + 1):
-        pool[n] += 45.0 * (persistence_by_num.get(n, 0) / max_pers if max_pers else 0)
+        pool[n] += persistence_weight * (persistence_by_num.get(n, 0) / max_pers if max_pers else 0)
+
+    if has_neighbor:
+        neighbor_by_num = {t['number']: t['count'] for t in neighbor_signal['top_numbers']}
+        max_neighbor = max(neighbor_by_num.values()) if neighbor_by_num else 1
+        for n in range(1, max_num + 1):
+            pool[n] += neighbor_weight * (neighbor_by_num.get(n, 0) / max_neighbor if max_neighbor else 0)
 
     # Tier 2 (30%): recurrence -- numbers from the previous draw get a
     # rate-matched (not zero, not favored) boost reflecting the empirical
@@ -629,14 +754,15 @@ def tsf_forecast(game='powerball', draw_type='main'):
     persistent = persistent_zones(series, decade_bins)
     transitions = structural_transitions(series)
     lookup = transition_lookup(transitions, current['regimes'], series)
-    hypotheses = build_hypotheses(current['regimes'], lookup, cfg)
+    neighbor_signal = neighbor_structural_signal(game, max_num, main_count, cutoffs) if draw_type == 'main' else None
+    hypotheses = build_hypotheses(current['regimes'], lookup, cfg, neighbor_signal)
 
     freq_data = frequency_analysis(draws)
     gap_data = gap_analysis(draws, max_num)
     recurrence = recurrence_profile(series)
     concentration_prof = concentration_profile(series)
 
-    pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data, decade_bins, current['numbers'])
+    pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data, decade_bins, current['numbers'], neighbor_signal)
     lines = generate_lines(pool, hypotheses, max_num, main_count, cutoffs, decade_bins, persistent)
 
     as_of_date = datetime.strptime(draws[0]['date'], '%Y-%m-%d').date()
@@ -659,6 +785,7 @@ def tsf_forecast(game='powerball', draw_type='main'):
         'recurrence_profile': recurrence,
         'concentration_profile': concentration_prof,
         'sum_regime_cutoffs': list(cutoffs),
+        'neighbor_signal': neighbor_signal,
         'model_version': MODEL_VERSION,
     }
 

@@ -2787,6 +2787,35 @@ function renderTsfDashboard(r) {
       ${transRows}
     </div>`;
 
+  const ns = r.neighbor_signal;
+  let neighborCard = '';
+  if (ns && ns.sample_size > 0) {
+    const matchRows = ns.matches.slice(0, 8).map(m => `
+      <div class="hist-row" style="flex-wrap:wrap;">
+        <div class="hist-date" style="min-width:80px;">${m.date}</div>
+        <div class="balls-row" style="margin:0;">${m.numbers.map(n=>`<span class="ball ball-purple" style="width:28px;height:28px;font-size:11px;">${n}</span>`).join('')}</div>
+        <div style="font-size:11px;color:var(--text2);white-space:nowrap;">${m.similarity}% match →</div>
+        ${m.next_drawing ? `
+        <div class="balls-row" style="margin:0;">${m.next_drawing.numbers.map(n=>`<span class="ball ball-teal" style="width:28px;height:28px;font-size:11px;">${n}</span>`).join('')}</div>
+        <div style="font-size:11px;color:var(--text2);">${m.next_drawing.date}</div>` : '<div style="font-size:11px;color:var(--text2);">no followup on record</div>'}
+      </div>`).join('');
+    const topNumRow = ns.top_numbers.slice(0, 10).map(t => `<span class="badge badge-moon">${t.number} ×${t.count}</span>`).join('');
+    neighborCard = `
+      <div class="card">
+        <h2>🔍 Nearest-Neighbor Matches</h2>
+        <p class="sub">The ${ns.sample_size} historical draws most structurally similar to the current one, and what followed each of them — the same engine behind the Pattern Match tab, feeding directly into the hypotheses and lines below.</p>
+        ${matchRows}
+        <div class="section-label" style="margin-top:14px;">Numbers that followed similar draws most often</div>
+        <div>${topNumRow}</div>
+      </div>`;
+  } else {
+    neighborCard = `
+      <div class="card">
+        <h2>🔍 Nearest-Neighbor Matches</h2>
+        <p class="sub">${r.draw_type === 'doubleplay' ? 'Not available for Double Play — the similarity search only covers the main draw stream.' : 'Not enough structurally similar historical draws with a recorded followup yet.'}</p>
+      </div>`;
+  }
+
   const hypCards = r.hypotheses.map(h=>`
     <div class="card" style="margin-bottom:0;">
       <h2>${h.label}</h2>
@@ -2841,7 +2870,7 @@ function renderTsfDashboard(r) {
       <div id="tsf-history-list" style="margin-top:12px;"></div>
     </div>`;
 
-  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + transCard + hypSection + linesSection + commitCard + trackRecordCard;
+  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + transCard + neighborCard + hypSection + linesSection + commitCard + trackRecordCard;
   loadTsfHistory();
 }
 
