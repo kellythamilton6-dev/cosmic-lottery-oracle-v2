@@ -446,6 +446,35 @@ def _primary_target(entry, frm_val):
     return max(entry['to_values'], key=lambda v: entry['to_values'][v]['pct'])
 
 
+# v1 (Florida Lotto) validated a dimension-specific preference for the
+# neighbor signal over the aggregate on disagreement (see v1's
+# tsf_engine.py for the held-out backtest that supported it), but running
+# the identical backtest against v2's games did NOT support porting that
+# same preference here: Powerball and Mega Millions disagree with the
+# aggregate on most dimensions far less often than Florida Lotto does
+# (too few cases to say anything), and the one dimension with enough
+# disagreement volume to test (sum_regime) gave contradictory results
+# between the two games -- Powerball's train/test split modestly
+# supported preferring neighbor (37%->39% held out), but Mega Millions'
+# flipped direction entirely between train (aggregate favored, 42% vs
+# 22%) and test (neighbor favored, 38% vs 19%), which is a sign of noise
+# rather than real signal given v2's smaller disagreement samples. Left
+# empty rather than force a shared, unvalidated preference across both
+# games; re-run the backtest as more data accumulates.
+NEIGHBOR_PREFERRED_DIMS = set()
+
+
+def _primary_target_with_neighbor(d, frm_val, entry, neighbor_signal):
+    agg_tgt = _primary_target(entry, frm_val)
+    if d not in NEIGHBOR_PREFERRED_DIMS:
+        return agg_tgt
+    neighbor_val, _ = _neighbor_top(neighbor_signal, d)
+    if neighbor_val is not None and neighbor_val != agg_tgt:
+        if neighbor_val in entry['to_values'] and entry['to_values'][neighbor_val]['count'] > 0:
+            return neighbor_val
+    return agg_tgt
+
+
 def _variance_target(dim, frm_val, entry):
     direct = REVERSE_MAP.get(dim, {}).get(frm_val)
     to_values = entry['to_values']
@@ -529,7 +558,7 @@ def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None):
                 return neighbor_val
         return _variance_target(d, frm, e)
 
-    hypotheses.append(_line('Primary', 'Most likely transition', lambda d, frm, e: _primary_target(e, frm)))
+    hypotheses.append(_line('Primary', 'Most likely transition', lambda d, frm, e: _primary_target_with_neighbor(d, frm, e, neighbor_signal)))
     hypotheses.append(_line('Persistence', 'Persistence / continuation scenario', lambda d, frm, e: frm))
     hypotheses.append(_line('Variance', 'Variance / reversal scenario', _variance_target_with_neighbor))
 
