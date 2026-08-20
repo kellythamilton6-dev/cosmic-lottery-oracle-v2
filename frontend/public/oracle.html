@@ -183,6 +183,7 @@
       <div style="display:flex;gap:8px;">
         <button id="mode-cosmic" class="btn btn-primary" style="font-size:13px;padding:8px 18px;" onclick="setMode('cosmic')">🔮 Cosmic</button>
         <button id="mode-pattern" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('pattern')">📊 Historical Trends</button>
+        <button id="mode-tsf" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('tsf')">🧭 Structural Forecast</button>
       </div>
     </div>
 
@@ -216,6 +217,18 @@
       </div>
     </div>
 
+    <div id="tsf-game-card" style="display:none;" class="card">
+      <h2>Lottery game</h2>
+      <p class="sub">Select which game to build a structural forecast for</p>
+      <div style="max-width:260px;">
+        <label>Lottery game</label>
+        <select id="game-tsf">
+          <option value="powerball">Powerball</option>
+          <option value="megamillions">Mega Millions</option>
+        </select>
+      </div>
+    </div>
+
     <div id="cosmic-weights">
       <div class="card">
         <h2>Influence weights</h2>
@@ -243,7 +256,26 @@
       </div>
     </div>
 
+    <div id="tsf-info" style="display:none;">
+      <div class="card" style="border-color:var(--purple);">
+        <h2>🧭 Structural Forecast Mode</h2>
+        <p class="sub">The same Transition &amp; Structural Forecasting model as the Structural Forecast tab -- Primary/Persistence/Variance lines built from how the draw's structure (sum, parity, concentration, consecutive pairs) tends to transition, not from astrology or frequency alone. This preview regenerates each time, same as the tab -- nothing is locked in until you commit it there.</p>
+      </div>
+    </div>
+
     <button class="btn btn-primary btn-lg" id="gen-btn" onclick="generateNumbers()">🔮 Generate Cosmic Numbers</button>
+
+    <div id="tsf-gen-results" style="display:none; margin-top:16px;">
+      <div class="card" style="border-color:var(--purple);">
+        <div class="stars" style="font-size:14px;">🧭 STRUCTURAL FORECAST</div>
+        <p id="tsf-gen-sub" style="font-size:13px;color:var(--text2);margin-bottom:16px;"></p>
+        <div class="grid3" id="tsf-gen-lines"></div>
+        <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="generateNumbers()">⟳ Regenerate</button>
+          <button class="btn btn-primary" style="font-size:13px;padding:7px 16px;" onclick="tsfGenGoCommit()">🔒 Commit &amp; view full breakdown →</button>
+        </div>
+      </div>
+    </div>
 
     <div id="results" style="display:none; margin-top:16px;">
       <div class="result-box">
@@ -259,7 +291,7 @@
         <div id="alt-b-summary" style="margin-top:8px;display:none;"></div>
         <div id="structure-guided-row" style="display:none;margin-top:16px;padding:12px;background:rgba(95,217,174,0.07);border:1px solid rgba(95,217,174,0.25);border-radius:10px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-            <span style="font-size:11px;font-weight:700;color:#5FD9AE;text-transform:uppercase;letter-spacing:0.06em;">🎯 Structure-guided</span>
+            <span style="font-size:11px;font-weight:700;color:#5FD9AE;text-transform:uppercase;letter-spacing:0.06em;" title="Powered by draw-shape similarity matching, not the Structural Forecast model">🔗 Similarity Match</span>
             <span id="structure-guided-source" style="font-size:11px;color:var(--text2);"></span>
           </div>
           <div class="balls-row" id="balls-structure-guided" style="margin:0;"></div>
@@ -280,7 +312,7 @@
               <option value="primary">Primary</option>
               <option value="alt_a">Alternative A</option>
               <option value="alt_b">Alternative B</option>
-              <option value="structure">Structure-guided</option>
+              <option value="structure">Similarity Match</option>
             </select>
           </div>
           <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="generateNumbers()">⟳ Regenerate</button>
@@ -615,6 +647,7 @@
 <script>
 const API = 'https://cosmic-lottery-oracle-v2-production.up.railway.app';
 let lastResult = null;
+let lastTsfGenResult = null;
 let currentMode = 'cosmic';
 let savedPredictions = [];
 let authToken = null;
@@ -672,15 +705,19 @@ function setMode(mode) {
   currentMode = mode;
   document.getElementById('cosmic-profile').style.display = mode === 'cosmic' ? 'block' : 'none';
   document.getElementById('pattern-game').style.display = mode === 'pattern' ? 'block' : 'none';
+  document.getElementById('tsf-game-card').style.display = mode === 'tsf' ? 'block' : 'none';
   document.getElementById('cosmic-weights').style.display = mode === 'cosmic' ? 'block' : 'none';
   document.getElementById('pattern-weights').style.display = mode === 'pattern' ? 'block' : 'none';
+  document.getElementById('tsf-info').style.display = mode === 'tsf' ? 'block' : 'none';
   document.getElementById('mode-cosmic').className = mode === 'cosmic' ? 'btn btn-primary' : 'btn btn-secondary';
   document.getElementById('mode-pattern').className = mode === 'pattern' ? 'btn btn-primary' : 'btn btn-secondary';
+  document.getElementById('mode-tsf').className = mode === 'tsf' ? 'btn btn-primary' : 'btn btn-secondary';
   const btn = document.getElementById('gen-btn');
-  btn.textContent = mode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : '📊 Generate Historical Numbers';
+  btn.textContent = mode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : mode === 'pattern' ? '📊 Generate Historical Numbers' : '🧭 Show Structural Forecast';
   btn.style.background = mode === 'pattern' ? 'var(--teal)' : 'var(--purple)';
   btn.style.borderColor = mode === 'pattern' ? 'var(--teal)' : 'var(--purple)';
   document.getElementById('results').style.display = 'none';
+  document.getElementById('tsf-gen-results').style.display = 'none';
 }
 
 function adjustPatternWeights() {
@@ -747,11 +784,18 @@ async function loadMoon() {
 
 async function generateNumbers() {
   const btn = document.getElementById('gen-btn');
-  btn.innerHTML = '<span class="loader"></span>' + (currentMode === 'cosmic' ? 'Consulting the cosmos...' : 'Analyzing patterns...');
+  btn.innerHTML = '<span class="loader"></span>' + (currentMode === 'cosmic' ? 'Consulting the cosmos...' : currentMode === 'tsf' ? 'Loading structural forecast...' : 'Analyzing patterns...');
   btn.disabled = true;
 
   try {
-    if(currentMode === 'pattern') {
+    if(currentMode === 'tsf') {
+      const game = document.getElementById('game-tsf').value;
+      const res = await fetch(`${API}/tsf/forecast?game=${game}&draw_type=main`);
+      const data = await res.json();
+      if(!data.success) throw new Error('API error');
+      lastTsfGenResult = data.result;
+      displayTsfGenResults(lastTsfGenResult);
+    } else if(currentMode === 'pattern') {
       const res = await fetch(`${API}/predict-pattern`, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
@@ -792,7 +836,7 @@ async function generateNumbers() {
     alert('Could not connect to API. Make sure uvicorn is running!');
   }
 
-  btn.textContent = currentMode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : '📊 Generate Pattern Numbers';
+  btn.textContent = currentMode === 'cosmic' ? '🔮 Generate Cosmic Numbers' : currentMode === 'pattern' ? '📊 Generate Pattern Numbers' : '🧭 Show Structural Forecast';
   btn.disabled = false;
 }
 
@@ -1275,6 +1319,30 @@ function displayResults(r) {
   document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
+const TSF_GEN_BALL_CLASS = {Primary:'ball-purple', Persistence:'ball-teal', Variance:'ball-amber'};
+
+function displayTsfGenResults(r) {
+  document.getElementById('tsf-gen-sub').textContent = `As of ${r.as_of_draw_date} · Next draw ${r.target_draw_date} · ${r.game}`;
+  document.getElementById('tsf-gen-lines').innerHTML = r.lines.map(l=>`
+    <div class="card" style="margin-bottom:0;">
+      <h2>${l.hypothesis}</h2>
+      <div class="balls-row">${l.numbers.map(n=>`<span class="ball ${TSF_GEN_BALL_CLASS[l.hypothesis]||'ball-purple'}" style="width:36px;height:36px;font-size:13px;">${n}</span>`).join('')}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:8px;">Sum ${l.sum} · ${l.odd_count}/${l.even_count} odd/even · ${l.confidence} confidence</div>
+    </div>`).join('');
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('tsf-gen-results').style.display = 'block';
+  document.getElementById('tsf-gen-results').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function tsfGenGoCommit() {
+  const game = document.getElementById('game-tsf').value;
+  const tsfGameSel = document.getElementById('tsf-game');
+  if(tsfGameSel) tsfGameSel.value = game;
+  const btn = Array.from(document.querySelectorAll('.nav-btn')).find(b=>b.textContent.includes('Structural Forecast'));
+  if(btn) btn.click();
+  runTsfAnalysis();
+}
+
 function displayHistoricalResults(r) {
   document.getElementById('alt-a-summary').style.display = 'none';
   document.getElementById('alt-b-summary').style.display = 'none';
@@ -1448,7 +1516,7 @@ async function savePrediction(setKeyArg) {
     const bonusSpan = balls ? balls.querySelector('.ball-coral') : null;
     numbers = spans.map(s => parseInt(s.textContent));
     bonus = bonusSpan ? parseInt(bonusSpan.textContent) : lastResult.bonus_primary;
-    if (!numbers.length) { alert('No structure-guided numbers — run a Pattern Match first.'); return; }
+    if (!numbers.length) { alert('No similarity-match numbers — run a Pattern Match first.'); return; }
   } else {
     numbers = lastResult.primary;
     bonus = lastResult.bonus_primary ?? null;
