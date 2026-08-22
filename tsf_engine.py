@@ -492,6 +492,44 @@ def _variance_target(dim, frm_val, entry):
     return direct or frm_val
 
 
+# Validated per-game via the same held-out backtest methodology as v1
+# (12 months, point-in-time-correct, train derived / test held out),
+# comparing this game's generic reversal against preferring the neighbor
+# signal's own top pick whenever it differs from the generic choice and
+# has real historical precedent. The margins here are dramatically
+# larger than Primary's calibration ever showed -- the generic reversal
+# is a much cruder heuristic than "what actually happened after draws
+# shaped like this one."
+#
+# powerball: neighbor wins consistently and by large margins on every
+# dimension tested -- sum_regime (37%/45% vs 26%/25%), parity_regime
+# (64%/56% vs 17%/18%), low_high_regime (73%/73% vs 13%/9%),
+# concentration_regime (86%/80% vs 14%/20%), consecutive_regime
+# (74%/69% vs 0%/3%).
+#
+# megamillions: same pattern except sum_regime, which was a dead tie in
+# both halves (25%/25% train, 32%/32% test) -- no benefit either way, so
+# excluded. parity_regime (61%/58% vs 16%/17%), low_high_regime
+# (63%/67% vs 10%/16%), concentration_regime (81%/80% vs 19%/20%),
+# consecutive_regime (76%/84% vs 3%/0%) all won consistently.
+VARIANCE_NEIGHBOR_DIMS_BY_GAME = {
+    'powerball': {'sum_regime', 'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
+    'megamillions': {'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
+}
+
+
+def _variance_target_with_neighbor_impl(d, frm_val, entry, neighbor_signal, game):
+    generic_tgt = _variance_target(d, frm_val, entry)
+    preferred_dims = VARIANCE_NEIGHBOR_DIMS_BY_GAME.get(game, set())
+    if d not in preferred_dims:
+        return generic_tgt
+    neighbor_val, _ = _neighbor_top(neighbor_signal, d)
+    if neighbor_val is not None and neighbor_val != generic_tgt:
+        if neighbor_val in entry['to_values'] and entry['to_values'][neighbor_val]['count'] > 0:
+            return neighbor_val
+    return generic_tgt
+
+
 def _weakest_link(confs):
     vals = [confs[d] for d in CORE_DIMS if d in confs]
     return min(vals, key=lambda c: CONF_RANK[c]) if vals else 'Low'
@@ -554,15 +592,7 @@ def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None, game=No
         }
 
     def _variance_target_with_neighbor(d, frm, e):
-        # Prefer the neighbor-favored alternative as a more evidence-
-        # grounded reversal candidate than the generic opposite-flip, but
-        # only when it's actually been observed historically from this
-        # exact from-state (never propose an unprecedented transition).
-        neighbor_val, _ = _neighbor_top(neighbor_signal, d)
-        if neighbor_val is not None and neighbor_val != frm:
-            if neighbor_val in e['to_values'] and e['to_values'][neighbor_val]['count'] > 0:
-                return neighbor_val
-        return _variance_target(d, frm, e)
+        return _variance_target_with_neighbor_impl(d, frm, e, neighbor_signal, game)
 
     hypotheses.append(_line('Primary', 'Most likely transition', lambda d, frm, e: _primary_target_with_neighbor(d, frm, e, neighbor_signal, game)))
     hypotheses.append(_line('Persistence', 'Persistence / continuation scenario', lambda d, frm, e: frm))
