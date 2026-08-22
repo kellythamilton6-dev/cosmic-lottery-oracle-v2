@@ -2665,6 +2665,7 @@ pmOnGameChange();
 // ============================================================
 
 const TSF_DIM_LABELS = {sum_regime:'Sum', parity_regime:'Odd/Even', low_high_regime:'Low/High', concentration_regime:'Concentration', consecutive_regime:'Consecutive pairs'};
+const TSF_DIMENSIONS_ORDER = ['sum_regime', 'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'];
 const TSF_LINE_BALL_CLASS = {Primary:'ball-purple', Persistence:'ball-teal', Variance:'ball-amber'};
 
 function tsfOnGameChange() {
@@ -2766,6 +2767,29 @@ function renderTsfDashboard(r) {
       ${zoneRows}
     </div>`;
 
+  const decadeTransRows = r.decade_bins.map((b,i)=>{
+    const entry = r.decade_transitions[i] || r.decade_transitions[String(i)];
+    if (!entry) return '';
+    const vals = Object.entries(entry.to_values).sort((a,b)=>b[1].pct-a[1].pct);
+    const bars = vals.map(([val,stat])=>`
+      <div class="freq-row">
+        <div class="freq-num" style="min-width:60px;">${val}</div>
+        <div class="freq-bg"><div class="freq-fill" style="width:${stat.pct*100}%;"></div></div>
+        <div class="freq-count">${(stat.pct*100).toFixed(0)}%</div>
+        <span class="badge ${tsfConfBadgeClass(stat.confidence)}">${stat.confidence}</span>
+      </div>`).join('');
+    return `<div style="margin-bottom:14px;">
+      <div class="section-label">${b[0]}-${b[1]} — currently "${entry.from}" (n=${entry.sample_size})</div>
+      ${bars || '<div style="font-size:12px;color:var(--text2);">Not enough historical data for this exact state</div>'}
+    </div>`;
+  }).join('');
+  const decadeTransCard = `
+    <div class="card">
+      <h2>🔢 Decade Transitions</h2>
+      <p class="sub">Whether each decade range tends to stay none/few/many next time, or shift — feeds a small (±15%) nudge into the candidate pool below, not yet backtested like the other calibrations on this page.</p>
+      ${decadeTransRows}
+    </div>`;
+
   const transRows = Object.entries(r.transitions).map(([dim, entry])=>{
     const vals = Object.entries(entry.to_values).sort((a,b)=>b[1].pct-a[1].pct);
     const bars = vals.map(([val,stat])=>`
@@ -2860,6 +2884,14 @@ function renderTsfDashboard(r) {
       <div id="tsf-commit-result"></div>
     </div>`;
 
+  const calibrationCard = `
+    <div class="card">
+      <h2>🔬 Calibration Report</h2>
+      <p class="sub">Re-runs the held-out backtest that validated which dimensions trust the nearest-neighbor signal over the whole-history default, using the latest data — flags if a game's calibration should change as more draws accumulate.</p>
+      <button class="btn btn-secondary" onclick="runCalibrationReport()" id="tsf-calibration-btn">Run calibration report (~15s)</button>
+      <div id="tsf-calibration-result" style="margin-top:14px;"></div>
+    </div>`;
+
   const trackRecordCard = `
     <div class="card">
       <h2>📈 Track Record</h2>
@@ -2870,7 +2902,7 @@ function renderTsfDashboard(r) {
       <div id="tsf-history-list" style="margin-top:12px;"></div>
     </div>`;
 
-  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + transCard + neighborCard + hypSection + linesSection + commitCard + trackRecordCard;
+  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + decadeTransCard + transCard + neighborCard + hypSection + linesSection + commitCard + calibrationCard + trackRecordCard;
   loadTsfHistory();
 }
 
@@ -2897,6 +2929,64 @@ async function commitTsfForecast() {
     btn.disabled = false;
   }
   loadTsfHistory();
+}
+
+const TSF_VERDICT_BADGE = {
+  favors_neighbor: 'badge-vedic', favors_baseline: 'badge-astro',
+  inconsistent: 'badge-num', insufficient_data: 'badge-moon',
+};
+const TSF_RECOMMENDATION_LABEL = {
+  add: '⚠ Add', remove: '⚠ Remove', keep: '✓ Keep as-is', no_change: 'No change',
+};
+
+async function runCalibrationReport() {
+  const r = window.lastTsfResult;
+  if(!r) return;
+  const btn = document.getElementById('tsf-calibration-btn');
+  const resultEl = document.getElementById('tsf-calibration-result');
+  btn.disabled = true;
+  btn.textContent = 'Running backtest (~15s)...';
+  resultEl.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text2);"><span class="loader" style="width:24px;height:24px;border-width:3px;"></span></div>`;
+  try {
+    const res = await fetch(`${API}/tsf/calibration-report?game=${r.game}&draw_type=${r.draw_type}&months=12`);
+    const data = await res.json();
+    if(data.success) {
+      renderCalibrationReport(data.report, resultEl);
+    } else {
+      resultEl.innerHTML = `<div class="alert alert-error">${data.detail || 'Calibration report failed'}</div>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<div class="alert alert-error">Could not connect to API.</div>`;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Run calibration report (~15s)';
+}
+
+function renderCalibrationReport(report, el) {
+  const renderSection = (title, findings) => {
+    const rows = TSF_DIMENSIONS_ORDER.map(dim => {
+      const f = findings[dim];
+      if(!f) return '';
+      const trainTxt = f.train.n >= 20 ? `${f.train.baseline_pct}% vs ${f.train.neighbor_pct}%` : `n=${f.train.n} (too few)`;
+      const testTxt = f.test.n >= 20 ? `${f.test.baseline_pct}% vs ${f.test.neighbor_pct}%` : `n=${f.test.n} (too few)`;
+      return `<div class="hist-row" style="flex-wrap:wrap;">
+        <div style="min-width:120px;font-size:13px;">${TSF_DIM_LABELS[dim]||dim}</div>
+        <span class="badge ${TSF_VERDICT_BADGE[f.verdict]}">${f.verdict.replace('_',' ')}</span>
+        <div style="font-size:11px;color:var(--text2);">train ${trainTxt} &nbsp;·&nbsp; test ${testTxt}</div>
+        <div style="margin-left:auto;font-size:12px;font-weight:600;">${TSF_RECOMMENDATION_LABEL[f.recommendation]}</div>
+      </div>`;
+    }).join('');
+    return `<div class="section-label" style="margin-top:12px;">${title}</div>${rows}`;
+  };
+
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">
+      ${report.months} months · train n=${report.n_train_draws} · test n=${report.n_test_draws} (held out)
+      ${report.any_changes_suggested ? ' · <span style="color:#F0B84A;">changes suggested below</span>' : ' · configuration still matches the latest data'}
+    </div>
+    ${renderSection('Primary (aggregate vs. neighbor)', report.primary)}
+    ${renderSection('Variance (generic reversal vs. neighbor)', report.variance)}
+  `;
 }
 
 async function loadTsfHistory() {

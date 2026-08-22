@@ -368,6 +368,41 @@ def transition_lookup(transitions_result, current_regimes, series):
         lookup[dim] = entry
     return lookup
 
+
+def _decade_baseline_rate(series, bidx, value):
+    total = len(series)
+    if not total:
+        return 0
+    count = sum(1 for s in series if _count_bucket(s['state']['decade_histogram'][bidx]) == value)
+    return count / total
+
+
+def decade_transition_lookup(transitions_result, current_decade_buckets, series):
+    """Same confidence-labeling approach as transition_lookup(), but for
+    each decade bin's own none/few/many bucket -- the "few 20s -> many
+    20s" style transitions from the original spec, which structural_
+    transitions() already computed but nothing ever surfaced or used
+    until now."""
+    decade_result = transitions_result['decade_bins']
+    lookup = {}
+    for bidx, frm_val in current_decade_buckets.items():
+        frm_row = decade_result.get(bidx, {}).get(frm_val)
+        entry = {'from': frm_val, 'sample_size': 0, 'to_values': {}}
+        if frm_row:
+            entry['sample_size'] = frm_row['total']
+            for to_val, stats in frm_row['to'].items():
+                baseline = _decade_baseline_rate(series, bidx, to_val)
+                label = confidence_label(frm_row['total'], stats['count'], baseline)
+                entry['to_values'][to_val] = {
+                    'count': stats['count'],
+                    'pct': stats['pct'],
+                    'baseline_pct': round(baseline, 4),
+                    'lift': round(stats['pct'] / baseline, 3) if baseline > 0 else None,
+                    'confidence': label,
+                }
+        lookup[bidx] = entry
+    return lookup
+
 # ============================================================
 # 3b. NEAREST-NEIGHBOR STRUCTURAL SIGNAL
 # Complements structural_transitions()'s whole-history aggregate (every
@@ -640,7 +675,10 @@ def concentration_profile(series, n=STRUCTURAL_WINDOW_SHORT):
 # 9/10. CANDIDATE POOL AND PREDICTION LINES (steps 9-10)
 # ============================================================
 
-def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_data, gap_data, decade_bins, current_numbers, neighbor_signal=None):
+DECADE_TRANSITION_BUCKET_FACTOR = {'many': 1.15, 'few': 1.0, 'none': 0.85}
+
+
+def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_data, gap_data, decade_bins, current_numbers, neighbor_signal=None, decade_lookup=None):
     """One shared {number: score} pool for all three lines, weighted to
     the user's stated Tier 1/2/3 hierarchy -- deliberately NOT
     pattern_predict()'s frequency/Markov/moon-weighted scorer, which is
@@ -660,10 +698,23 @@ def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_
     persistence_weight = 30.0 if has_neighbor else 45.0
     neighbor_weight = 15.0 if has_neighbor else 0.0
 
+    # Decade-bin transition data ("few 20s -> many 20s") modestly
+    # modulates each bin's persistence score -- unlike the neighbor
+    # signal and the Primary/Variance calibration above, this specific
+    # integration hasn't been backtested yet, so the adjustment is
+    # deliberately small and bounded (+-15%) rather than a full new
+    # weighted tier, and only nudges a bin toward/away from its already-
+    # computed persistence score rather than overriding it.
+    decade_lookup = decade_lookup or {}
+
     persistence_by_num = {}
     for bidx, (lo, hi) in enumerate(decade_bins):
         info = persistent[bidx]
         score = (info[f'window_{STRUCTURAL_WINDOW_SHORT}']['coverage'] + info[f'window_{STRUCTURAL_WINDOW_LONG}']['coverage']) / 2
+        bin_transition = decade_lookup.get(bidx, {}).get('to_values')
+        if bin_transition:
+            predicted_bucket = max(bin_transition, key=lambda v: bin_transition[v]['pct'])
+            score *= DECADE_TRANSITION_BUCKET_FACTOR.get(predicted_bucket, 1.0)
         for n in range(lo, hi + 1):
             persistence_by_num[n] = score
     max_pers = max(persistence_by_num.values()) if persistence_by_num else 1
@@ -819,6 +870,8 @@ def tsf_forecast(game='powerball', draw_type='main'):
     persistent = persistent_zones(series, decade_bins)
     transitions = structural_transitions(series)
     lookup = transition_lookup(transitions, current['regimes'], series)
+    current_decade_buckets = {i: _count_bucket(c) for i, c in enumerate(current['state']['decade_histogram'])}
+    decade_lookup = decade_transition_lookup(transitions, current_decade_buckets, series)
     neighbor_signal = neighbor_structural_signal(game, max_num, main_count, cutoffs) if draw_type == 'main' else None
     hypotheses = build_hypotheses(current['regimes'], lookup, cfg, neighbor_signal, game)
 
@@ -827,7 +880,7 @@ def tsf_forecast(game='powerball', draw_type='main'):
     recurrence = recurrence_profile(series)
     concentration_prof = concentration_profile(series)
 
-    pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data, decade_bins, current['numbers'], neighbor_signal)
+    pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data, decade_bins, current['numbers'], neighbor_signal, decade_lookup)
     lines = generate_lines(pool, hypotheses, max_num, main_count, cutoffs, decade_bins, persistent)
 
     as_of_date = datetime.strptime(draws[0]['date'], '%Y-%m-%d').date()
@@ -851,6 +904,7 @@ def tsf_forecast(game='powerball', draw_type='main'):
         'concentration_profile': concentration_prof,
         'sum_regime_cutoffs': list(cutoffs),
         'neighbor_signal': neighbor_signal,
+        'decade_transitions': decade_lookup,
         'model_version': MODEL_VERSION,
     }
 
@@ -942,6 +996,201 @@ def track_record_summary(scored_rows, model_version=MODEL_VERSION):
         'scored_count': len(rows),
         'by_hypothesis': by_hyp_pct,
         'recurrence_correct_pct': recurrence_pct,
+    }
+
+# ============================================================
+# CALIBRATION REPORT -- re-runs the same held-out backtest that
+# originally validated NEIGHBOR_PREFERRED_DIMS_BY_GAME and
+# VARIANCE_NEIGHBOR_DIMS_BY_GAME, so the calibration can be refreshed as
+# more data accumulates without a one-off script. Point-in-time-correct
+# (no lookahead): each target draw's neighbor search only considers
+# draws strictly before it, matching what the live model would have
+# actually known at the time.
+# ============================================================
+
+MIN_DIFFER_SAMPLE_PER_HALF = 20   # below this per half, a dimension's verdict is "insufficient data"
+CALIBRATION_MARGIN = 0.05          # need >=5pp edge in BOTH halves to call it a real, not noisy, preference
+
+
+def _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, indices, k=NEIGHBOR_K):
+    """One pass over `indices` (positions into `chrono`, oldest-first).
+    Only counts a "differ" case -- where the neighbor-informed pick would
+    actually have chosen something different from the baseline (aggregate
+    for Primary, generic reversal for Variance) -- since agreement cases
+    don't help decide which one to trust when they conflict."""
+    from match_engine import compute_features, similarity_score
+
+    primary_differ = {d: {'n': 0, 'agg': 0, 'nbr': 0} for d in DIMENSIONS}
+    variance_differ = {d: {'n': 0, 'gen': 0, 'nbr': 0} for d in DIMENSIONS}
+    n_tested = 0
+
+    for ti in indices:
+        target_draw = chrono[ti]
+        anchor_draw = chrono[ti - 1]
+        history_before = chrono[:ti]
+        if len(history_before) < 200:
+            continue
+        n_tested += 1
+
+        cutoffs = sum_regime_cutoffs(history_before)
+        series, _ = build_structural_series(history_before, max_num, main_count)
+        anchor_regimes = classify_regimes(structural_state(anchor_draw['numbers'], max_num), cutoffs, main_count)
+        transitions = structural_transitions(series)
+        lookup = transition_lookup(transitions, anchor_regimes, series)
+
+        anchor_features = compute_features(anchor_draw['numbers'], max_num)
+        candidates = history_before[:-1]
+        scored = sorted(
+            ((similarity_score(anchor_features, compute_features(c['numbers'], max_num), max_num), c)
+             for c in candidates),
+            key=lambda x: -x[0],
+        )
+        regime_tally = {d: Counter() for d in DIMENSIONS}
+        for _, m in scored[:k]:
+            midx = date_to_idx[m['date']]
+            if midx + 1 >= ti:
+                continue
+            followup = chrono[midx + 1]
+            fregimes = classify_regimes(structural_state(followup['numbers'], max_num), cutoffs, main_count)
+            for d in DIMENSIONS:
+                regime_tally[d][fregimes[d]] += 1
+        neighbor_signal = {
+            'sample_size': max((sum(c.values()) for c in regime_tally.values() if c), default=0),
+            'by_dimension': {
+                d: {v: {'count': c, 'pct': c / sum(cnt.values())} for v, c in cnt.items()}
+                for d, cnt in regime_tally.items() if cnt
+            },
+        }
+
+        target_regimes = classify_regimes(structural_state(target_draw['numbers'], max_num), cutoffs, main_count)
+
+        for d in DIMENSIONS:
+            frm = anchor_regimes[d]
+            entry = lookup.get(d, {'to_values': {}})
+            neighbor_val, _ = _neighbor_top(neighbor_signal, d)
+
+            agg_tgt = _primary_target(entry, frm)
+            nbr_tgt_primary = agg_tgt
+            if neighbor_val is not None and neighbor_val != agg_tgt:
+                if neighbor_val in entry['to_values'] and entry['to_values'][neighbor_val]['count'] > 0:
+                    nbr_tgt_primary = neighbor_val
+            if agg_tgt != nbr_tgt_primary:
+                primary_differ[d]['n'] += 1
+                if agg_tgt == target_regimes[d]:
+                    primary_differ[d]['agg'] += 1
+                if nbr_tgt_primary == target_regimes[d]:
+                    primary_differ[d]['nbr'] += 1
+
+            gen_tgt = _variance_target(d, frm, entry)
+            nbr_tgt_variance = gen_tgt
+            if neighbor_val is not None and neighbor_val != gen_tgt:
+                if neighbor_val in entry['to_values'] and entry['to_values'][neighbor_val]['count'] > 0:
+                    nbr_tgt_variance = neighbor_val
+            if gen_tgt != nbr_tgt_variance:
+                variance_differ[d]['n'] += 1
+                if gen_tgt == target_regimes[d]:
+                    variance_differ[d]['gen'] += 1
+                if nbr_tgt_variance == target_regimes[d]:
+                    variance_differ[d]['nbr'] += 1
+
+    return n_tested, primary_differ, variance_differ
+
+
+def _calibration_verdict(train_stat, test_stat, baseline_key, current_dims, dim):
+    tn, te = train_stat['n'], test_stat['n']
+    if tn < MIN_DIFFER_SAMPLE_PER_HALF or te < MIN_DIFFER_SAMPLE_PER_HALF:
+        verdict = 'insufficient_data'
+    else:
+        train_base_pct = train_stat[baseline_key] / tn
+        train_nbr_pct = train_stat['nbr'] / tn
+        test_base_pct = test_stat[baseline_key] / te
+        test_nbr_pct = test_stat['nbr'] / te
+        train_favors_nbr = (train_nbr_pct - train_base_pct) >= CALIBRATION_MARGIN
+        train_favors_base = (train_base_pct - train_nbr_pct) >= CALIBRATION_MARGIN
+        test_favors_nbr = (test_nbr_pct - test_base_pct) >= CALIBRATION_MARGIN
+        test_favors_base = (test_base_pct - test_nbr_pct) >= CALIBRATION_MARGIN
+        if train_favors_nbr and test_favors_nbr:
+            verdict = 'favors_neighbor'
+        elif train_favors_base and test_favors_base:
+            verdict = 'favors_baseline'
+        else:
+            verdict = 'inconsistent'
+
+    currently_enabled = dim in current_dims
+    if verdict == 'favors_neighbor':
+        recommendation = 'keep' if currently_enabled else 'add'
+    elif verdict in ('favors_baseline', 'inconsistent'):
+        recommendation = 'remove' if currently_enabled else 'no_change'
+    else:
+        recommendation = 'no_change'
+
+    return {
+        'verdict': verdict,
+        'currently_enabled': currently_enabled,
+        'recommendation': recommendation,
+        'train': {
+            'n': tn,
+            'baseline_pct': round(train_stat[baseline_key] / tn * 100, 1) if tn else None,
+            'neighbor_pct': round(train_stat['nbr'] / tn * 100, 1) if tn else None,
+        },
+        'test': {
+            'n': te,
+            'baseline_pct': round(test_stat[baseline_key] / te * 100, 1) if te else None,
+            'neighbor_pct': round(test_stat['nbr'] / te * 100, 1) if te else None,
+        },
+    }
+
+
+def calibration_report(game, draw_type='main', months=12, k=NEIGHBOR_K):
+    cfg = get_config(game)
+    max_num, main_count = cfg['max_num'], cfg['main_count']
+    all_draws = load_draws(game, draw_type=draw_type)
+    if not all_draws:
+        return {'error': 'No historical data found'}
+    chrono = list(reversed(all_draws))
+    date_to_idx = {d['date']: idx for idx, d in enumerate(chrono)}
+
+    cutoff_date = datetime.now().date() - timedelta(days=30 * months)
+    target_indices = [
+        i for i, d in enumerate(chrono)
+        if datetime.strptime(d['date'], '%Y-%m-%d').date() >= cutoff_date and i > 50
+    ]
+    if len(target_indices) < MIN_DIFFER_SAMPLE_PER_HALF * 2:
+        return {'error': f"Only {len(target_indices)} draws in the last {months} months -- not enough for a meaningful backtest."}
+
+    mid = len(target_indices) // 2
+    train_idx, test_idx = target_indices[:mid], target_indices[mid:]
+
+    n_train, primary_train, variance_train = _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, train_idx, k)
+    n_test, primary_test, variance_test = _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, test_idx, k)
+
+    current_primary_dims = NEIGHBOR_PREFERRED_DIMS_BY_GAME.get(game, set())
+    current_variance_dims = VARIANCE_NEIGHBOR_DIMS_BY_GAME.get(game, set())
+
+    primary_findings, variance_findings = {}, {}
+    any_changes = False
+    for d in DIMENSIONS:
+        pf = _calibration_verdict(primary_train[d], primary_test[d], 'agg', current_primary_dims, d)
+        vf = _calibration_verdict(variance_train[d], variance_test[d], 'gen', current_variance_dims, d)
+        primary_findings[d] = pf
+        variance_findings[d] = vf
+        if pf['recommendation'] in ('add', 'remove') or vf['recommendation'] in ('add', 'remove'):
+            any_changes = True
+
+    return {
+        'game': game,
+        'draw_type': draw_type,
+        'months': months,
+        'generated_at': datetime.now().isoformat(),
+        'n_train_draws': n_train,
+        'n_test_draws': n_test,
+        'primary': primary_findings,
+        'variance': variance_findings,
+        'current_config': {
+            'primary_preferred_dims': sorted(current_primary_dims),
+            'variance_preferred_dims': sorted(current_variance_dims),
+        },
+        'any_changes_suggested': any_changes,
     }
 
 
