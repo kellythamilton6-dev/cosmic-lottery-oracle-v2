@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 
 import os
 DB_URL = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_PUBLIC_URL") or "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery_v2"
-engine = create_engine(DB_URL)
+engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=280)
 
 # ============================================================
 # MOON PHASE CALCULATIONS

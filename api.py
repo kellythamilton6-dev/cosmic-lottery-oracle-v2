@@ -43,7 +43,7 @@ DB_URL = (
     os.environ.get("DATABASE_PUBLIC_URL") or
     "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery_v2"
 )
-engine = create_engine(DB_URL)
+engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=280)
 
 # In-memory record of the most recent sync attempt (scheduled or manual),
 # so sync health can be checked via /sync-status instead of only Railway logs.

@@ -16,7 +16,7 @@ DB_URL = (
     or os.environ.get("DATABASE_PUBLIC_URL")
     or "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery_v2"
 )
-engine = create_engine(DB_URL)
+engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=280)
 
 GAME_CONFIG = {
     "powerball": {"table": "powerball_draws", "bonus_col": "powerball", "max_num": 69, "bonus_max": 26},
