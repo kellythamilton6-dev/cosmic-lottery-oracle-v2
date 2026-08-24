@@ -1429,9 +1429,9 @@ function displayPatternResults(r) {
   renderBalls(r.alt_a || [], r.bonus_alt_a, 'balls-alt-a', 'ball-teal');
   renderBalls(r.alt_b || [], r.bonus_alt_b, 'balls-alt-b', 'ball-amber');
 
-  document.getElementById('r-moon').textContent = r.current_moon_phase || '—';
-  document.getElementById('r-sign').textContent = 'Statistical';
-  document.getElementById('r-nak').textContent = 'Pattern';
+  document.getElementById('r-moon').textContent = '—';
+  document.getElementById('r-sign').textContent = '—';
+  document.getElementById('r-nak').textContent = '—';
   document.getElementById('r-lp').textContent = '—';
 
   const top20 = r.top_20_by_confidence || [];

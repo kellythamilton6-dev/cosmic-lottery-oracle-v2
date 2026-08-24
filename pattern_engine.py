@@ -510,8 +510,7 @@ def pattern_predict(game='powerball', confidence_weight=True, weights=None, draw
         f"Analyzed {len(draws)} {game_label} draws. "
         f"Average sum per draw: {balance['avg_sum']} (±{balance['std_sum']}). "
         f"Typical odd/even split: {balance['recommended_odd_even']}. "
-        f"High/low split: {balance['recommended_high_low']}. "
-        f"Moon phase today: {current_phase}."
+        f"High/low split: {balance['recommended_high_low']}."
     )
 
     return {
