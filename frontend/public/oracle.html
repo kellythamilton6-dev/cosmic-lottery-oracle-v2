@@ -1436,7 +1436,7 @@ function displayPatternResults(r) {
 
   const top20 = r.top_20_by_confidence || [];
   const hot = top20.slice(0, 7).map(x => x.number);
-  const game = document.getElementById('pattern-analysis-game')?.value || 'powerball';
+  const game = r.game || document.getElementById('game-pattern')?.value || 'powerball';
   renderStructureGuided(top20.map(x=>x.number), r.bonus_primary, game);
   const sumCheck = r.sum_check || {};
 
