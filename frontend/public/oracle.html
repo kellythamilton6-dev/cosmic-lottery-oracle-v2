@@ -654,6 +654,35 @@ let authToken = null;
 let patternSnapshots = {}; // keyed by game, holds last-fetched snapshot arrays
 let lastPmStructure = null; // positional_averages from last pattern match run
 
+function pmStructureFromResult(result, game) {
+  if (!(result.positional_averages||[]).length || result.positional_averages[0].avg === null) return null;
+  return {
+    positions: result.positional_averages,
+    game,
+    draw: result.target?.date,
+    followupNums: (result.followup_white_frequency || []).map(([n]) => n),
+    followupBonus: (result.followup_bonus_frequency || []).map(([n]) => n),
+  };
+}
+
+// Similarity Match on the Generate tab is keyed off whatever draw was most
+// recently pattern-matched -- without this, it silently kept showing
+// results from a stale Pattern Match tab visit even after new drawings
+// happened, since lastPmStructure was only ever set from that tab. Always
+// re-matching against the latest draw here keeps Generate self-contained.
+async function refreshLastPmStructure(game) {
+  try {
+    const res = await fetch(`${API}/pattern-match/${game}?limit=10&include_secondary=true`);
+    const data = await res.json();
+    if (data.success && data.result) {
+      const structure = pmStructureFromResult(data.result, game);
+      if (structure) lastPmStructure = structure;
+    }
+  } catch (e) {
+    // Non-fatal -- Similarity Match block just won't show/update this round.
+  }
+}
+
 document.getElementById('drawdate').value = new Date().toISOString().split('T')[0];
 
 window.addEventListener('message', (e) => {
@@ -796,37 +825,45 @@ async function generateNumbers() {
       lastTsfGenResult = data.result;
       displayTsfGenResults(lastTsfGenResult);
     } else if(currentMode === 'pattern') {
-      const res = await fetch(`${API}/predict-pattern`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          game: document.getElementById('game-pattern').value,
-          w_frequency: parseInt(document.getElementById('wp-freq').value)/100,
-          w_overdue: parseInt(document.getElementById('wp-overdue').value)/100,
-          w_trend: parseInt(document.getElementById('wp-trend').value)/100,
-          w_moon: parseInt(document.getElementById('wp-moon').value)/100,
-          w_pairs: parseInt(document.getElementById('wp-pairs').value)/100,
-        })
-      });
+      const game = document.getElementById('game-pattern').value;
+      const [res] = await Promise.all([
+        fetch(`${API}/predict-pattern`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            game,
+            w_frequency: parseInt(document.getElementById('wp-freq').value)/100,
+            w_overdue: parseInt(document.getElementById('wp-overdue').value)/100,
+            w_trend: parseInt(document.getElementById('wp-trend').value)/100,
+            w_moon: parseInt(document.getElementById('wp-moon').value)/100,
+            w_pairs: parseInt(document.getElementById('wp-pairs').value)/100,
+          })
+        }),
+        refreshLastPmStructure(game),
+      ]);
       const data = await res.json();
       if(!data.success) throw new Error('API error');
       lastResult = data.prediction;
       displayPatternResults(lastResult);
     } else {
-      const res = await fetch(`${API}/predict`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          birth_date: document.getElementById('birthdate').value,
-          draw_date: document.getElementById('drawdate').value,
-          name: document.getElementById('name').value,
-          game: document.getElementById('game').value,
-          w_moon: parseInt(document.getElementById('w-moon').value)/100,
-          w_astro: parseInt(document.getElementById('w-astro').value)/100,
-          w_vedic: parseInt(document.getElementById('w-vedic').value)/100,
-          w_num: parseInt(document.getElementById('w-num').value)/100,
-        })
-      });
+      const game = document.getElementById('game').value;
+      const [res] = await Promise.all([
+        fetch(`${API}/predict`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            birth_date: document.getElementById('birthdate').value,
+            draw_date: document.getElementById('drawdate').value,
+            name: document.getElementById('name').value,
+            game,
+            w_moon: parseInt(document.getElementById('w-moon').value)/100,
+            w_astro: parseInt(document.getElementById('w-astro').value)/100,
+            w_vedic: parseInt(document.getElementById('w-vedic').value)/100,
+            w_num: parseInt(document.getElementById('w-num').value)/100,
+          })
+        }),
+        refreshLastPmStructure(game),
+      ]);
       const data = await res.json();
       if(!data.success) throw new Error('API error');
       lastResult = data.prediction;
@@ -2498,15 +2535,8 @@ function pmRender(result, game) {
   }
 
   // Store positional structure for use in Generate tab
-  if ((result.positional_averages||[]).length && result.positional_averages[0].avg !== null) {
-    lastPmStructure = {
-      positions: result.positional_averages,
-      game,
-      draw: result.target?.date,
-      followupNums: (result.followup_white_frequency || []).map(([n]) => n),
-      followupBonus: (result.followup_bonus_frequency || []).map(([n]) => n),
-    };
-  }
+  const structure = pmStructureFromResult(result, game);
+  if (structure) lastPmStructure = structure;
   pmRenderStructure(result, game);
   pmRenderPositional(result, bonusLabel);
   pmRenderFrequency(result, bonusLabel);
