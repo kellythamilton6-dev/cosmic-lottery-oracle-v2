@@ -2922,6 +2922,14 @@ function renderTsfDashboard(r) {
       <div id="tsf-calibration-result" style="margin-top:14px;"></div>
     </div>`;
 
+  const lineBacktestCard = `
+    <div class="card">
+      <h2>🎯 Line Backtest Report</h2>
+      <p class="sub">Runs this exact pipeline -- structural state, transitions, neighbor signal, hypotheses, and generated lines -- against real historical draws, point-in-time-correct, and checks whether the generated numbers actually matched what was drawn next. Answers "would this have worked?" directly, rather than just checking regime targets like the calibration report above.</p>
+      <button class="btn btn-secondary" onclick="runLineBacktestReport()" id="tsf-linebacktest-btn">Run line backtest (~20-30s)</button>
+      <div id="tsf-linebacktest-result" style="margin-top:14px;"></div>
+    </div>`;
+
   const trackRecordCard = `
     <div class="card">
       <h2>📈 Track Record</h2>
@@ -2932,7 +2940,7 @@ function renderTsfDashboard(r) {
       <div id="tsf-history-list" style="margin-top:12px;"></div>
     </div>`;
 
-  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + decadeTransCard + transCard + neighborCard + hypSection + linesSection + commitCard + calibrationCard + trackRecordCard;
+  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + decadeTransCard + transCard + neighborCard + hypSection + linesSection + commitCard + calibrationCard + lineBacktestCard + trackRecordCard;
   loadTsfHistory();
 }
 
@@ -3016,6 +3024,70 @@ function renderCalibrationReport(report, el) {
     </div>
     ${renderSection('Primary (aggregate vs. neighbor)', report.primary)}
     ${renderSection('Variance (generic reversal vs. neighbor)', report.variance)}
+  `;
+}
+
+async function runLineBacktestReport() {
+  const r = window.lastTsfResult;
+  if(!r) return;
+  const btn = document.getElementById('tsf-linebacktest-btn');
+  const resultEl = document.getElementById('tsf-linebacktest-result');
+  btn.disabled = true;
+  btn.textContent = 'Running backtest (~20-30s)...';
+  resultEl.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text2);"><span class="loader" style="width:24px;height:24px;border-width:3px;"></span></div>`;
+  try {
+    const res = await fetch(`${API}/tsf/line-backtest-report?game=${r.game}&draw_type=${r.draw_type}&months=12`);
+    const data = await res.json();
+    if(data.success) {
+      renderLineBacktestReport(data.report, resultEl);
+    } else {
+      resultEl.innerHTML = `<div class="alert alert-error">${data.detail || 'Line backtest failed'}</div>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<div class="alert alert-error">Could not connect to API.</div>`;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Run line backtest (~20-30s)';
+}
+
+const TSF_LINEBACKTEST_DIM_LABELS = {
+  sum_regime: 'Sum', parity_regime: 'Parity', low_high_regime: 'Low/High',
+  concentration_regime: 'Concentration', consecutive_regime: 'Consecutive',
+};
+
+function renderLineBacktestReport(report, el) {
+  const liftColor = lift => lift == null ? 'var(--text2)' : lift >= 1.1 ? '#5FD9AE' : lift <= 0.9 ? '#F06A6A' : 'var(--text2)';
+
+  const hypCard = (label, train, test) => {
+    const dimRows = Object.keys(TSF_LINEBACKTEST_DIM_LABELS).map(d => {
+      const t = train.dims_correct_pct[d], s = test.dims_correct_pct[d];
+      return `<div class="hist-row">
+        <div style="min-width:100px;font-size:12px;">${TSF_LINEBACKTEST_DIM_LABELS[d]}</div>
+        <div style="font-size:12px;color:var(--text2);">train ${t==null?'—':t+'%'} &nbsp;·&nbsp; test ${s==null?'—':s+'%'}</div>
+      </div>`;
+    }).join('');
+    return `<div style="background:var(--bg2);border-radius:10px;padding:14px;">
+      <div style="font-weight:700;margin-bottom:8px;">${label}</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin-bottom:8px;">
+        <span>Avg exact hits: <strong style="color:${liftColor(train.lift_vs_chance)}">${train.avg_exact_hits ?? '—'}</strong> train / <strong style="color:${liftColor(test.lift_vs_chance)}">${test.avg_exact_hits ?? '—'}</strong> test
+          <span style="color:var(--text2);"> (chance ≈ ${report.chance_expected_hits})</span></span>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">Range distribution correct: train ${train.range_distribution_pct ?? '—'}% · test ${test.range_distribution_pct ?? '—'}%</div>
+      <div class="section-label" style="margin-top:4px;">Regime target correct (vs. real outcome)</div>
+      ${dimRows}
+    </div>`;
+  };
+
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">
+      ${report.months} months · train n=${report.n_train_draws} · test n=${report.n_test_draws} (held out) · chance-level exact hits ≈ ${report.chance_expected_hits} per line
+    </div>
+    <div class="grid3">
+      ${hypCard('Primary', report.train.Primary, report.test.Primary)}
+      ${hypCard('Persistence', report.train.Persistence, report.test.Persistence)}
+      ${hypCard('Variance', report.train.Variance, report.test.Variance)}
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin-top:10px;">Exact-hit lift near 1.0 means no real edge over a random line -- expected for individual numbers in a fair lottery. The regime-target rows are the more meaningful accuracy check.</div>
   `;
 }
 
