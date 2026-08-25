@@ -558,7 +558,34 @@ VARIANCE_NEIGHBOR_DIMS_BY_GAME = {
 }
 
 
-def _variance_target_with_neighbor_impl(d, frm_val, entry, neighbor_signal, game):
+# Validated via a held-out backtest specifically for Powerball Double Play
+# (12mo, point-in-time, train/test split, comparing the generic reversal
+# against the plain aggregate/whole-history mode -- the same value Primary
+# would pick): the reversal is dramatically worse than the aggregate on
+# every dimension with enough disagreement cases to test. parity_regime
+# (69%/74% aggregate vs 14%/14% reversal), low_high_regime (62%/65% vs
+# 12%/19%), concentration_regime (78%/65% vs 22%/35%), consecutive_regime
+# (65%/73% vs 2%/4%) -- all consistent across both halves, far beyond
+# noise. sum_regime had too few disagreement cases (n=3-10) to test.
+#
+# Double Play never gets a neighbor signal (only computed for the main
+# stream), so Variance there was always the raw generic reversal alone --
+# and that alone appears to actively fight against how Double Play's
+# regimes actually behave (sticky/persistent rather than mean-reverting),
+# unlike main-stream Powerball where reversal (optionally neighbor-
+# informed) works fine. On these dimensions Variance now targets the same
+# regime Primary does for Double Play -- a real, data-driven collapse of
+# the "reversal scenario" concept where it demonstrably doesn't apply, not
+# a bug. Keyed by (game, draw_type) since this doesn't touch main-stream
+# Powerball at all.
+VARIANCE_AGGREGATE_FALLBACK_DIMS_BY_GAME_DRAWTYPE = {
+    ('powerball', 'doubleplay'): {'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
+}
+
+
+def _variance_target_with_neighbor_impl(d, frm_val, entry, neighbor_signal, game, draw_type='main'):
+    if d in VARIANCE_AGGREGATE_FALLBACK_DIMS_BY_GAME_DRAWTYPE.get((game, draw_type), set()):
+        return _primary_target(entry, frm_val)
     generic_tgt = _variance_target(d, frm_val, entry)
     preferred_dims = VARIANCE_NEIGHBOR_DIMS_BY_GAME.get(game, set())
     if d not in preferred_dims:
@@ -578,7 +605,7 @@ def _weakest_link(confs):
 NEIGHBOR_AGREEMENT_BONUS = {'Low': 'Medium', 'Medium': 'High', 'High': 'High'}
 
 
-def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None, game=None):
+def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None, game=None, draw_type='main'):
     hypotheses = []
 
     def _line(label, name, target_fn):
@@ -632,7 +659,7 @@ def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None, game=No
         }
 
     def _variance_target_with_neighbor(d, frm, e):
-        return _variance_target_with_neighbor_impl(d, frm, e, neighbor_signal, game)
+        return _variance_target_with_neighbor_impl(d, frm, e, neighbor_signal, game, draw_type)
 
     hypotheses.append(_line('Primary', 'Most likely transition', lambda d, frm, e: _primary_target_with_neighbor(d, frm, e, neighbor_signal, game)))
     hypotheses.append(_line('Persistence', 'Persistence / continuation scenario', lambda d, frm, e: frm))
@@ -878,7 +905,7 @@ def tsf_forecast(game='powerball', draw_type='main'):
     current_decade_buckets = {i: _count_bucket(c) for i, c in enumerate(current['state']['decade_histogram'])}
     decade_lookup = decade_transition_lookup(transitions, current_decade_buckets, series)
     neighbor_signal = neighbor_structural_signal(game, max_num, main_count, cutoffs) if draw_type == 'main' else None
-    hypotheses = build_hypotheses(current['regimes'], lookup, cfg, neighbor_signal, game)
+    hypotheses = build_hypotheses(current['regimes'], lookup, cfg, neighbor_signal, game, draw_type)
 
     freq_data = frequency_analysis(draws)
     gap_data = gap_analysis(draws, max_num)
@@ -1320,7 +1347,7 @@ def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, d
             _point_in_time_neighbor_signal(chrono, date_to_idx, ti, max_num, main_count, k)
             if draw_type == 'main' else None
         )
-        hypotheses = build_hypotheses(current_regimes, lookup, cfg, neighbor_signal, game)
+        hypotheses = build_hypotheses(current_regimes, lookup, cfg, neighbor_signal, game, draw_type)
 
         freq_data = frequency_analysis(history_before)
         gap_data = gap_analysis(history_before, max_num)
