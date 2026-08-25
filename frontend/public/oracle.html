@@ -691,7 +691,15 @@ async function refreshLastPmStructure(game) {
   }
 }
 
-document.getElementById('drawdate').value = new Date().toISOString().split('T')[0];
+// new Date().toISOString() reports the UTC calendar date, not the user's
+// local one -- in a timezone behind UTC, saving at night can land on
+// tomorrow's UTC date while it's still "today" on the user's wall clock.
+// This formats from local Date components instead.
+function localDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+document.getElementById('drawdate').value = localDateStr();
 
 window.addEventListener('message', (e) => {
   if (e.data && e.data.type === 'AUTH' && e.data.token) {
@@ -1423,7 +1431,7 @@ function displayHistoricalResults(r) {
 function displayPatternResults(r) {
   document.getElementById('alt-a-summary').style.display = 'none';
   document.getElementById('alt-b-summary').style.display = 'none';
-  const drawDate = new Date().toISOString().split('T')[0];
+  const drawDate = localDateStr();
   r.draw_date = drawDate;
   r.moon = { phase: r.current_moon_phase || 'Unknown' };
   r.sun_sign = null;
