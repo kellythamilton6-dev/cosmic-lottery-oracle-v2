@@ -1033,7 +1033,11 @@ def _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, indices
         n_tested += 1
 
         cutoffs = sum_regime_cutoffs(history_before)
-        series, _ = build_structural_series(history_before, max_num, main_count)
+        # structural_transitions() assumes most-recent-first order (series[i]
+        # later than series[i+1]), but history_before is chronological
+        # (oldest-first) -- reverse it here or the transition table comes out
+        # backwards (what preceded a regime, not what followed it).
+        series, _ = build_structural_series(list(reversed(history_before)), max_num, main_count)
         anchor_regimes = classify_regimes(structural_state(anchor_draw['numbers'], max_num), cutoffs, main_count)
         transitions = structural_transitions(series)
         lookup = transition_lookup(transitions, anchor_regimes, series)
