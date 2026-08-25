@@ -365,9 +365,9 @@
 
       <!-- Mode comparison -->
       <div class="card" style="margin-bottom:16px;">
-        <h2>🔮 Cosmic vs 📊 Historical Trends</h2>
+        <h2>🔮 Cosmic vs 📊 Historical Trends vs 🧭 Structural</h2>
         <p class="sub">Average matches per validated prediction by mode</p>
-        <div class="grid2" style="margin-top:12px;" id="acc-mode-compare">
+        <div class="grid3" style="margin-top:12px;" id="acc-mode-compare">
           <div style="background:var(--bg3);border-radius:10px;padding:16px;text-align:center;">
             <div style="font-size:13px;color:#A99FF8;font-weight:600;margin-bottom:8px;">🔮 Cosmic</div>
             <div style="font-size:32px;font-weight:300;" id="acc-cosmic-avg">—</div>
@@ -377,6 +377,11 @@
             <div style="font-size:13px;color:#5FD9AE;font-weight:600;margin-bottom:8px;">📊 Historical Trends</div>
             <div style="font-size:32px;font-weight:300;" id="acc-pattern-avg">—</div>
             <div style="font-size:12px;color:var(--text2);margin-top:4px;" id="acc-pattern-count">0 predictions</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:10px;padding:16px;text-align:center;">
+            <div style="font-size:13px;color:#F0B84A;font-weight:600;margin-bottom:8px;">🧭 Structural</div>
+            <div style="font-size:32px;font-weight:300;" id="acc-tsf-avg">—</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:4px;" id="acc-tsf-count">0 predictions</div>
           </div>
         </div>
       </div>
@@ -411,6 +416,9 @@
           </label>
           <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
             <input type="radio" name="hm-mode" value="pattern" onchange="renderConsensusHeatmap()"> Historical only
+          </label>
+          <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="radio" name="hm-mode" value="tsf" onchange="renderConsensusHeatmap()"> Structural only
           </label>
           <span style="width:1px;background:var(--border);margin:0 4px;"></span>
           <label style="font-size:12px;color:#5FD9AE;display:flex;align-items:center;gap:6px;cursor:pointer;" title="Blends Markov chain predictions and hot numbers from your Pattern Analysis history into the heatmap">
@@ -1594,6 +1602,13 @@ async function savePrediction(setKeyArg) {
   }
 }
 
+const MODE_META = {
+  cosmic: { label: '🔮 Cosmic', shortLabel: '🔮 Cosmic', color: '#A99FF8', ball: 'ball-purple' },
+  pattern: { label: '📊 Historical Trends', shortLabel: '📊 Historical', color: '#5FD9AE', ball: 'ball-teal' },
+  tsf: { label: '🧭 Structural', shortLabel: '🧭 Structural', color: '#F0B84A', ball: 'ball-amber' },
+};
+function modeMeta(m) { return MODE_META[m] || MODE_META.cosmic; }
+
 function formatWeights(mode, weightsJson) {
   if (!weightsJson) return '';
   try {
@@ -1633,12 +1648,16 @@ function updatePredList() {
   // Mode comparison
   const cosmicV = validated.filter(p => (p.mode||'cosmic') === 'cosmic');
   const patternV = validated.filter(p => p.mode === 'pattern');
+  const tsfV = validated.filter(p => p.mode === 'tsf');
   document.getElementById('acc-cosmic-avg').textContent = cosmicV.length
     ? (cosmicV.reduce((s,p) => s+(p.matches||0),0)/cosmicV.length).toFixed(1) : '—';
   document.getElementById('acc-cosmic-count').textContent = `${cosmicV.length} validated`;
   document.getElementById('acc-pattern-avg').textContent = patternV.length
     ? (patternV.reduce((s,p) => s+(p.matches||0),0)/patternV.length).toFixed(1) : '—';
   document.getElementById('acc-pattern-count').textContent = `${patternV.length} validated`;
+  document.getElementById('acc-tsf-avg').textContent = tsfV.length
+    ? (tsfV.reduce((s,p) => s+(p.matches||0),0)/tsfV.length).toFixed(1) : '—';
+  document.getElementById('acc-tsf-count').textContent = `${tsfV.length} validated`;
 
   // Top influences — find the single best validated prediction per mode
   const influenceHtml = validated.length === 0
@@ -1649,7 +1668,7 @@ function updatePredList() {
         .slice(0, 3)
         .map((p,i) => {
           const medal = ['🥇','🥈','🥉'][i];
-          const modeLabel = (p.mode||'cosmic') === 'cosmic' ? '🔮 Cosmic' : '📊 Historical Trends';
+          const modeLabel = modeMeta(p.mode||'cosmic').label;
           const wStr = formatWeights(p.mode||'cosmic', p.weights_json);
           return `<div style="background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -1665,9 +1684,10 @@ function updatePredList() {
 
   // Prediction list
   el.innerHTML = savedPredictions.map((p,i) => {
-    const modeLabel = (p.mode||'cosmic') === 'cosmic' ? '🔮 Cosmic' : '📊 Historical';
-    const modeColor = (p.mode||'cosmic') === 'cosmic' ? '#A99FF8' : '#5FD9AE';
-    const ballClass = (p.mode||'cosmic') === 'cosmic' ? 'ball-purple' : 'ball-teal';
+    const meta = modeMeta(p.mode||'cosmic');
+    const modeLabel = p.mode === 'tsf' && p.nakshatra ? `${meta.shortLabel} · ${p.nakshatra}` : meta.shortLabel;
+    const modeColor = meta.color;
+    const ballClass = meta.ball;
     const wStr = formatWeights(p.mode||'cosmic', p.weights_json);
     return `<div class="hist-row" style="flex-direction:column;align-items:flex-start;gap:6px;padding:14px 0;">
       <div style="display:flex;align-items:center;gap:12px;width:100%;">
@@ -1687,7 +1707,7 @@ function updatePredList() {
   }).join('<hr style="border:none;border-top:1px solid var(--border);margin:0;">');
 
   sel.innerHTML = savedPredictions.map((p,i) =>
-    `<option value="${i}">${p.draw_date} · ${(p.mode||'cosmic')==='cosmic'?'🔮':'📊'} · ${p.primary.join('-')}${p.bonus?'+'+p.bonus:''}</option>`
+    `<option value="${i}">${p.draw_date} · ${modeMeta(p.mode||'cosmic').label.split(' ')[0]} · ${p.primary.join('-')}${p.bonus?'+'+p.bonus:''}</option>`
   ).join('');
 }
 
@@ -2898,6 +2918,8 @@ function renderTsfDashboard(r) {
       </div>
       <div style="font-size:11px;color:var(--text2);margin-top:8px;">Matched ${l.matched_dimensions}/${l.total_dimensions} target dimensions</div>
       <p style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.5;">${l.why}</p>
+      <button class="btn btn-secondary" style="font-size:12px;padding:6px 14px;margin-top:10px;" onclick="saveTsfLine('${l.hypothesis}')" id="tsf-save-btn-${l.hypothesis}">💾 Save this line</button>
+      <div id="tsf-save-result-${l.hypothesis}" style="font-size:11px;margin-top:6px;"></div>
     </div>`).join('');
   const linesSection = `
     <div class="card">
@@ -2967,6 +2989,43 @@ async function commitTsfForecast() {
     btn.disabled = false;
   }
   loadTsfHistory();
+}
+
+async function saveTsfLine(hypothesisLabel) {
+  const r = window.lastTsfResult;
+  if(!r) return;
+  if(!authToken) { alert('Please sign in to save predictions.'); return; }
+  const line = r.lines.find(l => l.hypothesis === hypothesisLabel);
+  if(!line) return;
+  const btn = document.getElementById(`tsf-save-btn-${hypothesisLabel}`);
+  const resultEl = document.getElementById(`tsf-save-result-${hypothesisLabel}`);
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/save-prediction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+      body: JSON.stringify({
+        birth_date: null,
+        draw_date: r.target_draw_date,
+        game: r.game,
+        primary_numbers: line.numbers.join(','),
+        bonus_number: null,
+        moon_phase: 'N/A',
+        sun_sign: 'N/A',
+        nakshatra: line.hypothesis,
+        life_path: 0,
+        mode: 'tsf',
+      })
+    });
+    const data = await res.json();
+    if(!data.success) throw new Error('Save failed');
+    await loadPredictions();
+    resultEl.innerHTML = '<span style="color:#5FD9AE;">✓ Saved to Accuracy tab</span>';
+  } catch(e) {
+    resultEl.innerHTML = '<span style="color:#F06A6A;">✗ Save failed</span>';
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 const TSF_VERDICT_BADGE = {
