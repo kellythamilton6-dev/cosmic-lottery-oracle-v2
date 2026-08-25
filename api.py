@@ -1035,6 +1035,19 @@ def tsf_calibration_report(game: str = "powerball", draw_type: str = "main", mon
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/tsf/line-backtest-report")
+def tsf_line_backtest_report(game: str = "powerball", draw_type: str = "main", months: int = 12):
+    try:
+        from tsf_engine import line_backtest_report
+        result = line_backtest_report(game, draw_type, months)
+        if 'error' in result:
+            raise HTTPException(status_code=404, detail=result['error'])
+        return {"success": True, "report": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/predict-pattern")
 def predict_pattern(req: PatternPredictRequest):

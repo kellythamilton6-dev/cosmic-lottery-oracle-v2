@@ -1202,6 +1202,184 @@ def calibration_report(game, draw_type='main', months=12, k=NEIGHBOR_K):
         'any_changes_suggested': any_changes,
     }
 
+# ============================================================
+# LINE BACKTEST REPORT -- unlike calibration_report() (which only checks
+# whether a REGIME target was right), this runs the full pipeline --
+# structural state, transitions, neighbor signal, hypotheses, candidate
+# pool, generate_lines() -- exactly as tsf_forecast() would for each
+# historical anchor draw, then scores the actual generated 5/6-number
+# lines against the real next draw with score_forecast(). Answers "would
+# this app's generated numbers have actually matched past drawings,"
+# point-in-time-correct (no lookahead) and split train/test like the
+# calibration report, so a real edge is distinguished from noise.
+# ============================================================
+
+LINE_BACKTEST_MIN_HISTORY = 200  # same floor as _calibration_backtest_pass
+
+
+def _point_in_time_neighbor_signal(chrono, date_to_idx, ti, max_num, main_count, k=NEIGHBOR_K):
+    """Point-in-time-correct stand-in for neighbor_structural_signal() --
+    that function searches match_engine's LIVE full-history table, which
+    would leak future draws into a backtest anchored in the past. Mirrors
+    _calibration_backtest_pass()'s similarity search, but also tallies
+    per-number follow-up frequency (top_numbers), which
+    build_candidate_pool() needs and the calibration pass never did."""
+    from match_engine import compute_features, similarity_score
+
+    anchor_draw = chrono[ti - 1]
+    history_before = chrono[:ti]
+    cutoffs = sum_regime_cutoffs(history_before)
+    anchor_features = compute_features(anchor_draw['numbers'], max_num)
+    candidates = history_before[:-1]
+    scored = sorted(
+        ((similarity_score(anchor_features, compute_features(c['numbers'], max_num), max_num), c)
+         for c in candidates),
+        key=lambda x: -x[0],
+    )
+
+    regime_tally = {d: Counter() for d in DIMENSIONS}
+    number_counts = Counter()
+    sample_size = 0
+    for _, m in scored[:k]:
+        midx = date_to_idx[m['date']]
+        if midx + 1 >= ti:
+            continue
+        followup = chrono[midx + 1]
+        sample_size += 1
+        fregimes = classify_regimes(structural_state(followup['numbers'], max_num), cutoffs, main_count)
+        for d in DIMENSIONS:
+            regime_tally[d][fregimes[d]] += 1
+        for n in followup['numbers']:
+            number_counts[n] += 1
+
+    by_dimension = {}
+    for d in DIMENSIONS:
+        total = sum(regime_tally[d].values())
+        if total:
+            by_dimension[d] = {v: {'count': c, 'pct': round(c / total, 4)} for v, c in regime_tally[d].items()}
+
+    return {
+        'sample_size': sample_size,
+        'k_requested': k,
+        'by_dimension': by_dimension,
+        'top_numbers': [{'number': n, 'count': c} for n, c in number_counts.most_common(15)],
+    }
+
+
+def _chance_expected_hits(max_num, main_count):
+    """Expected exact number-hits for a uniformly random line of
+    main_count distinct numbers vs. the actual draw -- the baseline
+    every hypothesis's avg_exact_hits should be measured against, since
+    even a hypothesis with zero real skill will land some hits by chance
+    alone on a small max_num."""
+    return round(main_count * (main_count / max_num), 3)
+
+
+def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, draw_type='main'):
+    max_num, main_count = cfg['max_num'], cfg['main_count']
+    decade_bins = _decade_bins(max_num)
+
+    stats = {label: {'n': 0, 'exact_hits': 0, 'dims_correct': {d: 0 for d in DIMENSIONS}, 'range_correct': 0}
+              for label in ('Primary', 'Persistence', 'Variance')}
+    n_tested = 0
+
+    for ti in indices:
+        target_draw = chrono[ti]
+        anchor_draw = chrono[ti - 1]
+        history_before = chrono[:ti]
+        if len(history_before) < LINE_BACKTEST_MIN_HISTORY:
+            continue
+        n_tested += 1
+
+        cutoffs = sum_regime_cutoffs(history_before)
+        series, _ = build_structural_series(list(reversed(history_before)), max_num, main_count)
+        current_regimes = classify_regimes(structural_state(anchor_draw['numbers'], max_num), cutoffs, main_count)
+        transitions = structural_transitions(series)
+        lookup = transition_lookup(transitions, current_regimes, series)
+        current_decade_buckets = {i: _count_bucket(c) for i, c in enumerate(structural_state(anchor_draw['numbers'], max_num)['decade_histogram'])}
+        decade_lookup = decade_transition_lookup(transitions, current_decade_buckets, series)
+
+        neighbor_signal = (
+            _point_in_time_neighbor_signal(chrono, date_to_idx, ti, max_num, main_count, k)
+            if draw_type == 'main' else None
+        )
+        hypotheses = build_hypotheses(current_regimes, lookup, cfg, neighbor_signal, game)
+
+        freq_data = frequency_analysis(history_before)
+        gap_data = gap_analysis(history_before, max_num)
+        persistent = persistent_zones(series, decade_bins)
+        recurrence = recurrence_profile(series)
+
+        pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data,
+                                     decade_bins, anchor_draw['numbers'], neighbor_signal, decade_lookup)
+        lines = generate_lines(pool, hypotheses, max_num, main_count, cutoffs, decade_bins, persistent)
+
+        scorecard = score_forecast(lines, target_draw['numbers'], max_num, main_count, cutoffs)
+        for lc in scorecard['lines']:
+            s = stats[lc['hypothesis']]
+            s['n'] += 1
+            s['exact_hits'] += lc['exact_hits']
+            s['range_correct'] += 1 if lc['range_distribution_correct'] else 0
+            for d, key in (('sum_regime', 'sum_regime_correct'), ('parity_regime', 'parity_correct'),
+                           ('low_high_regime', 'low_high_correct'), ('concentration_regime', 'concentration_correct'),
+                           ('consecutive_regime', 'consecutive_regime_correct')):
+                if lc[key]:
+                    s['dims_correct'][d] += 1
+
+    return n_tested, stats
+
+
+def _summarize_line_stats(stats, max_num, main_count):
+    chance = _chance_expected_hits(max_num, main_count)
+    out = {}
+    for label, s in stats.items():
+        n = s['n']
+        out[label] = {
+            'n': n,
+            'avg_exact_hits': round(s['exact_hits'] / n, 3) if n else None,
+            'chance_expected_hits': chance,
+            'lift_vs_chance': round((s['exact_hits'] / n) / chance, 3) if n and chance else None,
+            'range_distribution_pct': round(s['range_correct'] / n * 100, 1) if n else None,
+            'dims_correct_pct': {d: round(c / n * 100, 1) if n else None for d, c in s['dims_correct'].items()},
+        }
+    return out
+
+
+def line_backtest_report(game, draw_type='main', months=12, k=NEIGHBOR_K):
+    cfg = get_config(game)
+    max_num, main_count = cfg['max_num'], cfg['main_count']
+    all_draws = load_draws(game, draw_type=draw_type)
+    if not all_draws:
+        return {'error': 'No historical data found'}
+    chrono = list(reversed(all_draws))
+    date_to_idx = {d['date']: idx for idx, d in enumerate(chrono)}
+
+    cutoff_date = datetime.now().date() - timedelta(days=30 * months)
+    target_indices = [
+        i for i, d in enumerate(chrono)
+        if datetime.strptime(d['date'], '%Y-%m-%d').date() >= cutoff_date and i > LINE_BACKTEST_MIN_HISTORY
+    ]
+    if len(target_indices) < 20:
+        return {'error': f"Only {len(target_indices)} draws in the last {months} months -- not enough for a meaningful backtest."}
+
+    mid = len(target_indices) // 2
+    train_idx, test_idx = target_indices[:mid], target_indices[mid:]
+
+    n_train, train_stats = _line_backtest_pass(chrono, date_to_idx, cfg, game, train_idx, k, draw_type)
+    n_test, test_stats = _line_backtest_pass(chrono, date_to_idx, cfg, game, test_idx, k, draw_type)
+
+    return {
+        'game': game,
+        'draw_type': draw_type,
+        'months': months,
+        'generated_at': datetime.now().isoformat(),
+        'n_train_draws': n_train,
+        'n_test_draws': n_test,
+        'chance_expected_hits': _chance_expected_hits(max_num, main_count),
+        'train': _summarize_line_stats(train_stats, max_num, main_count),
+        'test': _summarize_line_stats(test_stats, max_num, main_count),
+    }
+
 
 if __name__ == '__main__':
     import json
