@@ -488,18 +488,20 @@ def _primary_target(entry, frm_val):
 # Play needed different calibrations too. Powerball and Mega Millions
 # don't agree with each other either.
 #
-# powerball: neighbor more accurate for sum_regime on disagreement (37%
-# vs 26% train, n=54; held to 33% vs 29% out-of-sample, n=48 -- the
-# large, consistent sample that makes this trustworthy). Every other
-# dimension had too few disagreement cases (0-7) to test at all.
+# powerball: sum_regime was re-tested after fixing a reversed-chronology
+# bug in the calibration backtest (the aggregate baseline was measuring
+# what preceded a regime, not what followed it). Corrected, it's a dead
+# heat in-sample (29% vs 29% train, n=52) and a tiny, sub-threshold edge
+# out-of-sample (33% vs 31%, n=45) -- no real signal, so removed. Every
+# other dimension has too few disagreement cases (0-4) to test at all.
 #
 # megamillions: sum_regime flipped direction between train (aggregate
-# favored, 42% vs 22%) and test (neighbor favored, 41% vs 7%) -- a sign
+# favored, 47% vs 21%) and test (neighbor favored, 39% vs 9%) -- a sign
 # of noise, not signal, so left out. Every other dimension also had too
-# few disagreement cases (0-6) to test. Left empty rather than force an
+# few disagreement cases (0-4) to test. Left empty rather than force an
 # unvalidated preference; re-run the backtest as more data accumulates.
 NEIGHBOR_PREFERRED_DIMS_BY_GAME = {
-    'powerball': {'sum_regime'},
+    'powerball': set(),
     'megamillions': set(),
 }
 
@@ -536,19 +538,22 @@ def _variance_target(dim, frm_val, entry):
 # is a much cruder heuristic than "what actually happened after draws
 # shaped like this one."
 #
-# powerball: neighbor wins consistently and by large margins on every
-# dimension tested -- sum_regime (37%/45% vs 26%/25%), parity_regime
-# (64%/56% vs 17%/18%), low_high_regime (73%/73% vs 13%/9%),
-# concentration_regime (86%/80% vs 14%/20%), consecutive_regime
-# (74%/69% vs 0%/3%).
+# powerball: neighbor wins consistently and by large margins on
+# parity_regime (63%/55% vs 19%/18%), low_high_regime (73%/74% vs
+# 14%/8%), concentration_regime (84%/81% vs 16%/19%), consecutive_regime
+# (71%/71% vs 2%/2%). sum_regime was re-tested after fixing a reversed-
+# chronology bug in the calibration backtest itself (the aggregate
+# baseline was measuring what preceded a regime, not what followed it)
+# -- with that corrected, the train-half margin drops to 3.5pp (below
+# the 5pp threshold), so it no longer holds up and was removed.
 #
 # megamillions: same pattern except sum_regime, which was a dead tie in
-# both halves (25%/25% train, 32%/32% test) -- no benefit either way, so
-# excluded. parity_regime (61%/58% vs 16%/17%), low_high_regime
-# (63%/67% vs 10%/16%), concentration_regime (81%/80% vs 19%/20%),
+# both halves (26%/26% train, 34%/31% test) -- no benefit either way, so
+# excluded. parity_regime (63%/57% vs 15%/18%), low_high_regime
+# (61%/68% vs 10%/16%), concentration_regime (81%/79% vs 19%/21%),
 # consecutive_regime (76%/84% vs 3%/0%) all won consistently.
 VARIANCE_NEIGHBOR_DIMS_BY_GAME = {
-    'powerball': {'sum_regime', 'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
+    'powerball': {'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
     'megamillions': {'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
 }
 
