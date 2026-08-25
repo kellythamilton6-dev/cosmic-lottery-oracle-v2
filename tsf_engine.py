@@ -1275,7 +1275,24 @@ def _chance_expected_hits(max_num, main_count):
     return round(main_count * (main_count / max_num), 3)
 
 
-def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, draw_type='main'):
+DIM_SCORE_KEYS = (
+    ('sum_regime', 'sum_regime_correct'), ('parity_regime', 'parity_correct'),
+    ('low_high_regime', 'low_high_correct'), ('concentration_regime', 'concentration_correct'),
+    ('consecutive_regime', 'consecutive_regime_correct'),
+)
+
+
+def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, draw_type='main', samples_per_draw=10):
+    """generate_lines() samples randomly (_weighted_pick uses random.uniform),
+    so a single generated line per anchor draw is one noisy realization --
+    re-running the report gave visibly different avg_exact_hits each time.
+    Everything upstream of generate_lines() (transitions, neighbor signal,
+    candidate pool) is deterministic given the anchor, so it's computed once
+    per anchor; only the cheap random line-generation step repeats
+    samples_per_draw times and the hit-rate is averaged, estimating the
+    expected value instead of one draw from it. dims_correct is unaffected
+    by this randomness (target_regimes never changes across samples) so
+    it's only computed once per anchor either way."""
     max_num, main_count = cfg['max_num'], cfg['main_count']
     decade_bins = _decade_bins(max_num)
 
@@ -1312,18 +1329,26 @@ def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, d
 
         pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data,
                                      decade_bins, anchor_draw['numbers'], neighbor_signal, decade_lookup)
-        lines = generate_lines(pool, hypotheses, max_num, main_count, cutoffs, decade_bins, persistent)
 
-        scorecard = score_forecast(lines, target_draw['numbers'], max_num, main_count, cutoffs)
-        for lc in scorecard['lines']:
-            s = stats[lc['hypothesis']]
+        exact_hits_sum = {label: 0 for label in stats}
+        range_correct_sum = {label: 0 for label in stats}
+        dims_correct_this_anchor = {}
+        for sample_i in range(samples_per_draw):
+            lines = generate_lines(pool, hypotheses, max_num, main_count, cutoffs, decade_bins, persistent)
+            scorecard = score_forecast(lines, target_draw['numbers'], max_num, main_count, cutoffs)
+            for lc in scorecard['lines']:
+                label = lc['hypothesis']
+                exact_hits_sum[label] += lc['exact_hits']
+                range_correct_sum[label] += 1 if lc['range_distribution_correct'] else 0
+                if sample_i == 0:
+                    dims_correct_this_anchor[label] = {d: lc[key] for d, key in DIM_SCORE_KEYS}
+
+        for label, s in stats.items():
             s['n'] += 1
-            s['exact_hits'] += lc['exact_hits']
-            s['range_correct'] += 1 if lc['range_distribution_correct'] else 0
-            for d, key in (('sum_regime', 'sum_regime_correct'), ('parity_regime', 'parity_correct'),
-                           ('low_high_regime', 'low_high_correct'), ('concentration_regime', 'concentration_correct'),
-                           ('consecutive_regime', 'consecutive_regime_correct')):
-                if lc[key]:
+            s['exact_hits'] += exact_hits_sum[label] / samples_per_draw
+            s['range_correct'] += range_correct_sum[label] / samples_per_draw
+            for d, ok in dims_correct_this_anchor[label].items():
+                if ok:
                     s['dims_correct'][d] += 1
 
     return n_tested, stats
@@ -1345,7 +1370,7 @@ def _summarize_line_stats(stats, max_num, main_count):
     return out
 
 
-def line_backtest_report(game, draw_type='main', months=12, k=NEIGHBOR_K):
+def line_backtest_report(game, draw_type='main', months=12, k=NEIGHBOR_K, samples_per_draw=10):
     cfg = get_config(game)
     max_num, main_count = cfg['max_num'], cfg['main_count']
     all_draws = load_draws(game, draw_type=draw_type)
@@ -1365,13 +1390,14 @@ def line_backtest_report(game, draw_type='main', months=12, k=NEIGHBOR_K):
     mid = len(target_indices) // 2
     train_idx, test_idx = target_indices[:mid], target_indices[mid:]
 
-    n_train, train_stats = _line_backtest_pass(chrono, date_to_idx, cfg, game, train_idx, k, draw_type)
-    n_test, test_stats = _line_backtest_pass(chrono, date_to_idx, cfg, game, test_idx, k, draw_type)
+    n_train, train_stats = _line_backtest_pass(chrono, date_to_idx, cfg, game, train_idx, k, draw_type, samples_per_draw)
+    n_test, test_stats = _line_backtest_pass(chrono, date_to_idx, cfg, game, test_idx, k, draw_type, samples_per_draw)
 
     return {
         'game': game,
         'draw_type': draw_type,
         'months': months,
+        'samples_per_draw': samples_per_draw,
         'generated_at': datetime.now().isoformat(),
         'n_train_draws': n_train,
         'n_test_draws': n_test,

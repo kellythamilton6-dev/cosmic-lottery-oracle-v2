@@ -1036,10 +1036,10 @@ def tsf_calibration_report(game: str = "powerball", draw_type: str = "main", mon
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/tsf/line-backtest-report")
-def tsf_line_backtest_report(game: str = "powerball", draw_type: str = "main", months: int = 12):
+def tsf_line_backtest_report(game: str = "powerball", draw_type: str = "main", months: int = 12, samples_per_draw: int = 10):
     try:
         from tsf_engine import line_backtest_report
-        result = line_backtest_report(game, draw_type, months)
+        result = line_backtest_report(game, draw_type, months, samples_per_draw=samples_per_draw)
         if 'error' in result:
             raise HTTPException(status_code=404, detail=result['error'])
         return {"success": True, "report": result}

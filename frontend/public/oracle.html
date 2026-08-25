@@ -2947,8 +2947,8 @@ function renderTsfDashboard(r) {
   const lineBacktestCard = `
     <div class="card">
       <h2>🎯 Line Backtest Report</h2>
-      <p class="sub">Runs this exact pipeline -- structural state, transitions, neighbor signal, hypotheses, and generated lines -- against real historical draws, point-in-time-correct, and checks whether the generated numbers actually matched what was drawn next. Answers "would this have worked?" directly, rather than just checking regime targets like the calibration report above.</p>
-      <button class="btn btn-secondary" onclick="runLineBacktestReport()" id="tsf-linebacktest-btn">Run line backtest (~20-30s)</button>
+      <p class="sub">Runs this exact pipeline -- structural state, transitions, neighbor signal, hypotheses, and generated lines -- against real historical draws, point-in-time-correct, and checks whether the generated numbers actually matched what was drawn next. Answers "would this have worked?" directly, rather than just checking regime targets like the calibration report above. Line generation is randomized, so each historical draw is sampled 10 times and averaged for a stable estimate (re-running this won't give a wildly different number each time).</p>
+      <button class="btn btn-secondary" onclick="runLineBacktestReport()" id="tsf-linebacktest-btn">Run line backtest (~90-120s)</button>
       <div id="tsf-linebacktest-result" style="margin-top:14px;"></div>
     </div>`;
 
@@ -3092,7 +3092,7 @@ async function runLineBacktestReport() {
   const btn = document.getElementById('tsf-linebacktest-btn');
   const resultEl = document.getElementById('tsf-linebacktest-result');
   btn.disabled = true;
-  btn.textContent = 'Running backtest (~20-30s)...';
+  btn.textContent = 'Running backtest (~90-120s)... averaging multiple samples per draw for a stable estimate';
   resultEl.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text2);"><span class="loader" style="width:24px;height:24px;border-width:3px;"></span></div>`;
   try {
     const res = await fetch(`${API}/tsf/line-backtest-report?game=${r.game}&draw_type=${r.draw_type}&months=12`);
@@ -3106,7 +3106,7 @@ async function runLineBacktestReport() {
     resultEl.innerHTML = `<div class="alert alert-error">Could not connect to API.</div>`;
   }
   btn.disabled = false;
-  btn.textContent = 'Run line backtest (~20-30s)';
+  btn.textContent = 'Run line backtest (~90-120s)';
 }
 
 const TSF_LINEBACKTEST_DIM_LABELS = {
@@ -3139,7 +3139,7 @@ function renderLineBacktestReport(report, el) {
 
   el.innerHTML = `
     <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">
-      ${report.months} months · train n=${report.n_train_draws} · test n=${report.n_test_draws} (held out) · chance-level exact hits ≈ ${report.chance_expected_hits} per line
+      ${report.months} months · train n=${report.n_train_draws} · test n=${report.n_test_draws} (held out) · ${report.samples_per_draw||10} samples/draw averaged · chance-level exact hits ≈ ${report.chance_expected_hits} per line
     </div>
     <div class="grid3">
       ${hypCard('Primary', report.train.Primary, report.test.Primary)}
