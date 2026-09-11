@@ -524,7 +524,7 @@ def list_predictions(user_id: str = Depends(get_user_id)):
             rows = conn.execute(text("""
                 SELECT id, draw_date, game, primary_numbers, bonus_number,
                        moon_phase, sun_sign, life_path, matches, validated,
-                       mode, weights_json
+                       mode, weights_json, nakshatra, actual_numbers, actual_bonus
                 FROM predictions
                 WHERE user_id = :user_id
                 ORDER BY created_at DESC
@@ -542,6 +542,9 @@ def list_predictions(user_id: str = Depends(get_user_id)):
             "validated": r[9],
             "mode": r[10] or "cosmic",
             "weights_json": r[11],
+            "nakshatra": r[12],
+            "actual_numbers": r[13],
+            "actual_bonus": r[14],
         } for r in rows]
         return {"success": True, "predictions": preds}
     except Exception as e:

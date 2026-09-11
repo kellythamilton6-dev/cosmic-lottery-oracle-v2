@@ -90,6 +90,31 @@
   #gen-btn { display: block; margin: 0 auto; }
   .mode-bar { background:var(--bg3); border-radius:10px; padding:16px 20px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
 
+  /* Accuracy tab -- grouped by draw date */
+  .acc-filter-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
+  .acc-filter-bar select { width:auto; min-width:160px; }
+  .acc-filter-count { font-size:12px; color:var(--text2); margin-left:auto; }
+  .acc-group { background:var(--bg3); border:1px solid var(--border); border-radius:10px; margin-bottom:10px; overflow:hidden; }
+  .acc-group-header { display:flex; align-items:center; gap:12px; padding:14px 16px; cursor:pointer; user-select:none; flex-wrap:wrap; }
+  .acc-group-header:hover { background:rgba(255,255,255,0.03); }
+  .acc-group-chevron { color:var(--text2); font-size:11px; transition:transform 0.2s; display:inline-block; }
+  .acc-group.open .acc-group-chevron { transform:rotate(90deg); }
+  .acc-group-date { font-size:14px; font-weight:600; min-width:140px; }
+  .acc-group-game { font-size:12px; color:var(--text2); }
+  .acc-group-meta { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  .acc-group-body { display:none; border-top:1px solid var(--border); padding:4px 16px; }
+  .acc-group.open .acc-group-body { display:block; }
+  .acc-line-row { padding:10px 0; border-bottom:1px solid var(--border); }
+  .acc-line-row:last-child { border-bottom:none; }
+  .acc-line-top { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .acc-line-mode { font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; background:rgba(0,0,0,0.3); }
+  .acc-line-status { margin-left:auto; }
+  .acc-line-balls { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:6px 0; }
+  .acc-line-balls .ball { width:30px; height:30px; font-size:12px; }
+  .acc-line-balls .ball.hit { box-shadow:0 0 0 2px #5FD9AE; }
+  .acc-actual-row { font-size:11px; color:var(--text2); }
+  .acc-weights-row { font-size:11px; color:var(--text2); margin-top:2px; }
+
   /* Pattern Match tab */
   .pm-chips { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
   .pm-chip { background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:5px 10px; font-size:12px; color:var(--text2); }
@@ -460,7 +485,20 @@
     <!-- Prediction list -->
     <div class="card">
       <h2>📋 All saved predictions</h2>
-      <p class="sub">Click a row to see full influence details</p>
+      <p class="sub">Grouped by draw date, most recent first</p>
+      <div class="acc-filter-bar">
+        <select id="acc-filter-game" onchange="updatePredList()">
+          <option value="all">All games</option>
+          <option value="powerball">Powerball</option>
+          <option value="megamillions">Mega Millions</option>
+        </select>
+        <select id="acc-filter-status" onchange="updatePredList()">
+          <option value="all">All statuses</option>
+          <option value="validated">Validated only</option>
+          <option value="pending">Pending only</option>
+        </select>
+        <span id="acc-filter-count" class="acc-filter-count"></span>
+      </div>
       <div id="pred-list"><div style="color:var(--text2);font-size:14px;">No saved predictions yet — generate and save one first.</div></div>
     </div>
 
@@ -1690,33 +1728,98 @@ function updatePredList() {
   // Consensus heatmap
   renderConsensusHeatmap();
 
-  // Prediction list
-  el.innerHTML = savedPredictions.map((p,i) => {
-    const meta = modeMeta(p.mode||'cosmic');
-    const modeLabel = p.mode === 'tsf' && p.nakshatra ? `${meta.shortLabel} · ${p.nakshatra}` : meta.shortLabel;
-    const modeColor = meta.color;
-    const ballClass = meta.ball;
-    const wStr = formatWeights(p.mode||'cosmic', p.weights_json);
-    return `<div class="hist-row" style="flex-direction:column;align-items:flex-start;gap:6px;padding:14px 0;">
-      <div style="display:flex;align-items:center;gap:12px;width:100%;">
-        <div class="hist-date">${p.draw_date}</div>
-        <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,0.3);color:${modeColor};font-weight:600;">${modeLabel}</span>
-        <span style="font-size:12px;color:var(--text2);">${p.game}</span>
-        <div style="margin-left:auto;">${p.validated
-          ? `<span style="font-size:12px;padding:3px 10px;border-radius:4px;background:rgba(29,158,117,0.2);color:#5FD9AE;font-weight:600;">${p.matches} matched</span>`
-          : '<span style="font-size:12px;color:var(--text2);">Pending</span>'}</div>
-      </div>
-      <div class="balls-row" style="margin:2px 0;">
-        ${p.primary.map(n=>`<span class="ball ${ballClass}" style="width:32px;height:32px;font-size:12px;">${n}</span>`).join('')}
-        ${p.bonus!=null?`<span style="color:var(--text2);margin:0 2px;">+</span><span class="ball ball-coral" style="width:32px;height:32px;font-size:12px;">${p.bonus}</span>`:''}
-      </div>
-      ${wStr ? `<div style="font-size:11px;color:var(--text2);">${wStr}</div>` : ''}
-    </div>`;
-  }).join('<hr style="border:none;border-top:1px solid var(--border);margin:0;">');
+  // Prediction list -- grouped by game + draw date, most recent first
+  renderAccPredList();
 
   sel.innerHTML = savedPredictions.map((p,i) =>
     `<option value="${i}">${p.draw_date} · ${modeMeta(p.mode||'cosmic').label.split(' ')[0]} · ${p.primary.join('-')}${p.bonus?'+'+p.bonus:''}</option>`
   ).join('');
+}
+
+const ACC_GAME_LABELS = { powerball: 'Powerball', megamillions: 'Mega Millions' };
+let accOpenGroups = new Set();
+
+function toggleAccGroup(key) {
+  if (accOpenGroups.has(key)) accOpenGroups.delete(key); else accOpenGroups.add(key);
+  renderAccPredList();
+}
+
+function renderAccPredList() {
+  const el = document.getElementById('pred-list');
+  const countEl = document.getElementById('acc-filter-count');
+  if (!el) return;
+
+  if (savedPredictions.length === 0) {
+    el.innerHTML = '<div style="color:var(--text2);font-size:14px;">No saved predictions yet — generate and save one first.</div>';
+    if (countEl) countEl.textContent = '';
+    return;
+  }
+
+  const gameFilter = document.getElementById('acc-filter-game')?.value || 'all';
+  const statusFilter = document.getElementById('acc-filter-status')?.value || 'all';
+  const filtered = savedPredictions.filter(p => {
+    if (gameFilter !== 'all' && p.game !== gameFilter) return false;
+    if (statusFilter === 'validated' && !p.validated) return false;
+    if (statusFilter === 'pending' && p.validated) return false;
+    return true;
+  });
+  if (countEl) countEl.textContent = `Showing ${filtered.length} of ${savedPredictions.length}`;
+
+  if (filtered.length === 0) {
+    el.innerHTML = '<div style="color:var(--text2);font-size:14px;">No saved predictions match this filter</div>';
+    return;
+  }
+
+  const groups = new Map();
+  for (const p of filtered) {
+    const key = `${p.game}|${p.draw_date}`;
+    if (!groups.has(key)) groups.set(key, { game: p.game, draw_date: p.draw_date, preds: [] });
+    groups.get(key).preds.push(p);
+  }
+  const sortedGroups = [...groups.entries()].sort((a,b) => b[1].draw_date.localeCompare(a[1].draw_date));
+
+  if (accOpenGroups.size === 0 && sortedGroups.length) accOpenGroups.add(sortedGroups[0][0]);
+
+  el.innerHTML = sortedGroups.map(([key, g]) => {
+    const gValidated = g.preds.filter(p => p.validated);
+    const isOpen = accOpenGroups.has(key);
+    const dateLabel = new Date(g.draw_date + 'T12:00:00').toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+    const metaBadge = gValidated.length === 0
+      ? `<span style="font-size:12px;padding:3px 10px;border-radius:4px;background:rgba(186,117,23,0.2);color:#F0B84A;">Pending</span>`
+      : `<span style="font-size:12px;padding:3px 10px;border-radius:4px;background:rgba(29,158,117,0.2);color:#5FD9AE;font-weight:600;">${gValidated.length}/${g.preds.length} scored · best ${Math.max(...gValidated.map(p=>p.matches||0))} hits</span>`;
+    const bodyRows = g.preds.map(p => {
+      const meta = modeMeta(p.mode||'cosmic');
+      const modeLabel = p.mode === 'tsf' && p.nakshatra ? `${meta.shortLabel} · ${p.nakshatra}` : meta.shortLabel;
+      const wStr = formatWeights(p.mode||'cosmic', p.weights_json);
+      const actualArr = p.actual_numbers ? p.actual_numbers.split(',').map(Number).filter(n=>!isNaN(n)) : [];
+      const actualSet = new Set(actualArr);
+      const ballsHtml = p.primary.map(n => `<span class="ball ${meta.ball}${actualSet.has(n)?' hit':''}">${n}</span>`).join('')
+        + (p.bonus!=null ? `<span style="color:var(--text2);margin:0 2px;">+</span><span class="ball ball-coral${p.actual_bonus===p.bonus?' hit':''}">${p.bonus}</span>` : '');
+      const status = p.validated
+        ? `<span style="font-size:12px;padding:3px 10px;border-radius:4px;background:rgba(29,158,117,0.2);color:#5FD9AE;font-weight:600;">${p.matches} matched</span>`
+        : '<span style="font-size:12px;color:var(--text2);">Pending</span>';
+      return `
+        <div class="acc-line-row">
+          <div class="acc-line-top">
+            <span class="acc-line-mode" style="color:${meta.color};">${modeLabel}</span>
+            <span class="acc-line-status">${status}</span>
+          </div>
+          <div class="acc-line-balls">${ballsHtml}</div>
+          ${wStr ? `<div class="acc-weights-row">${wStr}</div>` : ''}
+          ${p.validated && actualArr.length ? `<div class="acc-actual-row">Actual: ${actualArr.join(', ')}${p.actual_bonus!=null?' + '+p.actual_bonus:''}</div>` : ''}
+        </div>`;
+    }).join('');
+    return `
+      <div class="acc-group${isOpen?' open':''}">
+        <div class="acc-group-header" onclick="toggleAccGroup('${key.replace(/'/g,"\\'")}')">
+          <span class="acc-group-chevron">▶</span>
+          <span class="acc-group-date">${dateLabel}</span>
+          <span class="acc-group-game">${ACC_GAME_LABELS[g.game] || g.game}</span>
+          <span class="acc-group-meta">${metaBadge}</span>
+        </div>
+        <div class="acc-group-body">${bodyRows}</div>
+      </div>`;
+  }).join('');
 }
 
 function renderConsensusHeatmap() {
