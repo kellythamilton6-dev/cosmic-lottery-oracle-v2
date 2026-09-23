@@ -500,15 +500,27 @@ def _primary_target(entry, frm_val):
 # of noise, not signal, so left out. Every other dimension also had too
 # few disagreement cases (0-4) to test. Left empty rather than force an
 # unvalidated preference; re-run the backtest as more data accumulates.
-NEIGHBOR_PREFERRED_DIMS_BY_GAME = {
-    'powerball': set(),
-    'megamillions': set(),
+#
+# Keyed by (game, draw_type), not just game -- same reason as
+# VARIANCE_NEIGHBOR_DIMS_BY_GAME_DRAWTYPE: Florida Lotto (v1) hit a case
+# where Main and Double Play validated completely differently for this
+# exact dict, and a single shared set per game silently applied Main's
+# findings to Double Play. The backtest above was only ever run against
+# Powerball's main stream, so Double Play doesn't have its own entry
+# validated yet either way -- left empty (no preference) rather than
+# inheriting Main's, which happens to also be empty right now, but
+# splitting it now means this can never silently reuse the wrong draw
+# type's findings later.
+NEIGHBOR_PREFERRED_DIMS_BY_GAME_DRAWTYPE = {
+    ('powerball', 'main'): set(),
+    ('powerball', 'doubleplay'): set(),
+    ('megamillions', 'main'): set(),
 }
 
 
-def _primary_target_with_neighbor(d, frm_val, entry, neighbor_signal, game):
+def _primary_target_with_neighbor(d, frm_val, entry, neighbor_signal, game, draw_type='main'):
     agg_tgt = _primary_target(entry, frm_val)
-    preferred_dims = NEIGHBOR_PREFERRED_DIMS_BY_GAME.get(game, set())
+    preferred_dims = NEIGHBOR_PREFERRED_DIMS_BY_GAME_DRAWTYPE.get((game, draw_type), set())
     if d not in preferred_dims:
         return agg_tgt
     neighbor_val, _ = _neighbor_top(neighbor_signal, d)
@@ -676,7 +688,7 @@ def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None, game=No
     def _variance_target_with_neighbor(d, frm, e):
         return _variance_target_with_neighbor_impl(d, frm, e, neighbor_signal, game, draw_type)
 
-    hypotheses.append(_line('Primary', 'Most likely transition', lambda d, frm, e: _primary_target_with_neighbor(d, frm, e, neighbor_signal, game)))
+    hypotheses.append(_line('Primary', 'Most likely transition', lambda d, frm, e: _primary_target_with_neighbor(d, frm, e, neighbor_signal, game, draw_type)))
     hypotheses.append(_line('Persistence', 'Persistence / continuation scenario', lambda d, frm, e: frm))
     hypotheses.append(_line('Variance', 'Variance / reversal scenario', _variance_target_with_neighbor))
 
@@ -1082,7 +1094,7 @@ def track_record_summary(scored_rows, model_version=MODEL_VERSION):
 
 # ============================================================
 # CALIBRATION REPORT -- re-runs the same held-out backtest that
-# originally validated NEIGHBOR_PREFERRED_DIMS_BY_GAME and
+# originally validated NEIGHBOR_PREFERRED_DIMS_BY_GAME_DRAWTYPE and
 # VARIANCE_NEIGHBOR_DIMS_BY_GAME_DRAWTYPE, so the calibration can be refreshed as
 # more data accumulates without a one-off script. Point-in-time-correct
 # (no lookahead): each target draw's neighbor search only considers
@@ -1250,7 +1262,7 @@ def calibration_report(game, draw_type='main', months=12, k=NEIGHBOR_K):
     n_train, primary_train, variance_train = _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, train_idx, k)
     n_test, primary_test, variance_test = _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, test_idx, k)
 
-    current_primary_dims = NEIGHBOR_PREFERRED_DIMS_BY_GAME.get(game, set())
+    current_primary_dims = NEIGHBOR_PREFERRED_DIMS_BY_GAME_DRAWTYPE.get((game, draw_type), set())
     current_variance_dims = VARIANCE_NEIGHBOR_DIMS_BY_GAME_DRAWTYPE.get((game, draw_type), set())
 
     primary_findings, variance_findings = {}, {}
