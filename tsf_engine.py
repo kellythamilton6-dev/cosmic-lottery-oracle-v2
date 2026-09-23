@@ -742,11 +742,16 @@ DECADE_TRANSITION_BUCKET_FACTOR = {'many': 1.15, 'few': 1.0, 'none': 0.85}
 # before it was ever backtested); an explicit empty set() means "backtested,
 # none of them validated" -- deliberately different from missing so it's
 # clear this game's bins were actually checked, not just never looked at.
-# Ported from v1, which found this mechanism added no real signal for
-# Florida Lotto (every bin degenerated to the same guess as the naive
-# baseline) -- but that finding doesn't transfer here; see the "decade_bins"
-# section of calibration_report()'s output once it's been run for these games.
-DECADE_TRANSITION_ENABLED_BINS_BY_GAME_DRAWTYPE = {}
+# First calibration pass, 12mo point-in-time-correct train/test: all 18
+# bin-checks across powerball/main, powerball/doubleplay, and
+# megamillions/main came back "inconsistent" -- an even more decisive
+# no-signal result than v1's Florida Lotto finding (which had one
+# exception). Disabled entirely for all three combinations.
+DECADE_TRANSITION_ENABLED_BINS_BY_GAME_DRAWTYPE = {
+    ('powerball', 'main'): set(),
+    ('powerball', 'doubleplay'): set(),
+    ('megamillions', 'main'): set(),
+}
 
 
 def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_data, gap_data, decade_bins, current_numbers, neighbor_signal=None, decade_lookup=None, neighbor_weight_override=None, game=None, draw_type='main'):
