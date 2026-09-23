@@ -574,7 +574,7 @@
           <option value="powerball">Powerball</option>
           <option value="megamillions">Mega Millions</option>
         </select>
-        <select id="tsf-drawtype" style="width:auto;">
+        <select id="tsf-drawtype" style="width:auto;" onchange="loadTsfHistory()">
           <option value="main">Main draws</option>
           <option value="doubleplay">Double Play draws</option>
         </select>
@@ -587,6 +587,15 @@
         <div style="font-size:16px;margin-bottom:8px;">Click Run Analysis to begin</div>
         <div style="font-size:13px;">Builds a draw-to-draw structural transition model, three competing hypotheses, and three prediction lines</div>
       </div>
+    </div>
+    <div class="card">
+      <h2>📈 Track Record</h2>
+      <p class="sub">Per-dimension hit rate across every forecast you've committed and scored for this game — the honest, out-of-sample measure of whether the model's structural assumptions are actually holding up.</p>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
+        <button class="btn" onclick="scoreTsfPending()" id="tsf-score-btn">Score pending forecasts</button>
+      </div>
+      <div id="tsf-track-summary"></div>
+      <div id="tsf-history-list" style="margin-top:12px;"></div>
     </div>
   </div>
 
@@ -2834,6 +2843,7 @@ function tsfOnGameChange() {
   const drawTypeSel = document.getElementById('tsf-drawtype');
   drawTypeSel.querySelector('option[value="doubleplay"]').disabled = (game === 'megamillions');
   if (game === 'megamillions') drawTypeSel.value = 'main';
+  loadTsfHistory();
 }
 
 function tsfConfBadgeClass(conf) {
@@ -3042,17 +3052,7 @@ function renderTsfDashboard(r) {
       <div id="tsf-linebacktest-result" style="margin-top:14px;"></div>
     </div>`;
 
-  const trackRecordCard = `
-    <div class="card">
-      <h2>📈 Track Record</h2>
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
-        <button class="btn" onclick="scoreTsfPending()" id="tsf-score-btn">Score pending forecasts</button>
-      </div>
-      <div id="tsf-track-summary"></div>
-      <div id="tsf-history-list" style="margin-top:12px;"></div>
-    </div>`;
-
-  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + decadeTransCard + neighborCard + hypSection + linesSection + commitCard + calibrationCard + lineBacktestCard + trackRecordCard;
+  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + decadeTransCard + neighborCard + hypSection + linesSection + commitCard + calibrationCard + lineBacktestCard;
   loadTsfHistory();
 }
 
