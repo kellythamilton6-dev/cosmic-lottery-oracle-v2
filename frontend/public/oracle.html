@@ -2951,27 +2951,6 @@ function renderTsfDashboard(r) {
       ${decadeTransRows}
     </div>`;
 
-  const transRows = Object.entries(r.transitions).map(([dim, entry])=>{
-    const vals = Object.entries(entry.to_values).sort((a,b)=>b[1].pct-a[1].pct);
-    const bars = vals.map(([val,stat])=>`
-      <div class="freq-row">
-        <div class="freq-num" style="min-width:90px;">${val}</div>
-        <div class="freq-bg"><div class="freq-fill" style="width:${stat.pct*100}%;"></div></div>
-        <div class="freq-count">${(stat.pct*100).toFixed(0)}%</div>
-        <span class="badge ${tsfConfBadgeClass(stat.confidence)}">${stat.confidence}</span>
-      </div>`).join('');
-    return `<div style="margin-bottom:14px;">
-      <div class="section-label">${TSF_DIM_LABELS[dim]||dim} — currently "${entry.from}" (n=${entry.sample_size})</div>
-      ${bars || '<div style="font-size:12px;color:var(--text2);">Not enough historical data for this exact state</div>'}
-    </div>`;
-  }).join('');
-  const transCard = `
-    <div class="card">
-      <h2>🔀 Structural Transitions</h2>
-      <p class="sub">What plausibly follows the current structure — not "which numbers are overdue"</p>
-      ${transRows}
-    </div>`;
-
   const ns = r.neighbor_signal;
   let neighborCard = '';
   if (ns && ns.sample_size > 0) {
@@ -3073,7 +3052,7 @@ function renderTsfDashboard(r) {
       <div id="tsf-history-list" style="margin-top:12px;"></div>
     </div>`;
 
-  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + decadeTransCard + transCard + neighborCard + hypSection + linesSection + commitCard + calibrationCard + lineBacktestCard + trackRecordCard;
+  document.getElementById('tsf-results').innerHTML = stateCard + zonesCard + decadeTransCard + neighborCard + hypSection + linesSection + commitCard + calibrationCard + lineBacktestCard + trackRecordCard;
   loadTsfHistory();
 }
 
