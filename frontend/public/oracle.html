@@ -284,7 +284,7 @@
     <div id="tsf-info" style="display:none;">
       <div class="card" style="border-color:var(--purple);">
         <h2>🧭 Structural Forecast Mode</h2>
-        <p class="sub">The same Transition &amp; Structural Forecasting model as the Structural Forecast tab -- Primary/Persistence/Variance lines built from how the draw's structure (sum, parity, concentration, consecutive pairs) tends to transition, not from astrology or frequency alone. This preview regenerates each time, same as the tab -- nothing is locked in until you commit it there.</p>
+        <p class="sub">The same Transition &amp; Structural Forecasting model as the Structural Forecast tab -- Primary/Persistence/Variance lines built from how the draw's structure (sum, parity, concentration, consecutive pairs) tends to transition, not from astrology or frequency alone, plus a Neighbor line when there's enough structurally similar history to trust. This preview regenerates each time, same as the tab -- nothing is locked in until you commit it there.</p>
       </div>
     </div>
 
@@ -295,7 +295,7 @@
         <div class="stars" style="font-size:14px;">🧭 STRUCTURAL FORECAST</div>
         <p id="tsf-gen-sub" style="font-size:13px;color:var(--text2);margin-bottom:16px;"></p>
         <div id="tsf-gen-neighbor" style="margin-bottom:16px;"></div>
-        <div class="grid3" id="tsf-gen-lines"></div>
+        <div id="tsf-gen-lines" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:12px;"></div>
         <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="generateNumbers()">⟳ Regenerate</button>
           <button class="btn btn-primary" style="font-size:13px;padding:7px 16px;" onclick="tsfGenGoCommit()">🔒 Commit &amp; view full breakdown →</button>
@@ -586,7 +586,7 @@
       <div style="text-align:center;padding:40px;color:var(--text2);">
         <div style="font-size:40px;margin-bottom:12px;">🧭</div>
         <div style="font-size:16px;margin-bottom:8px;">Click Run Analysis to begin</div>
-        <div style="font-size:13px;">Builds a draw-to-draw structural transition model, three competing hypotheses, and three prediction lines</div>
+        <div style="font-size:13px;">Builds a draw-to-draw structural transition model, competing hypotheses, and prediction lines -- including a Neighbor consensus line when there's enough structurally similar history</div>
       </div>
     </div>
     <div class="card">
@@ -1420,7 +1420,7 @@ function displayResults(r) {
   document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
-const TSF_GEN_BALL_CLASS = {Primary:'ball-purple', Persistence:'ball-teal', Variance:'ball-amber'};
+const TSF_GEN_BALL_CLASS = {Primary:'ball-purple', Persistence:'ball-teal', Variance:'ball-amber', Neighbor:'ball-coral'};
 
 function displayTsfGenResults(r) {
   document.getElementById('tsf-gen-sub').textContent = `As of ${r.as_of_draw_date} · Next draw ${r.target_draw_date} · ${r.game}`;
@@ -2847,7 +2847,7 @@ pmOnGameChange();
 
 const TSF_DIM_LABELS = {sum_regime:'Sum', parity_regime:'Odd/Even', low_high_regime:'Low/High', concentration_regime:'Concentration', consecutive_regime:'Consecutive pairs'};
 const TSF_DIMENSIONS_ORDER = ['sum_regime', 'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'];
-const TSF_LINE_BALL_CLASS = {Primary:'ball-purple', Persistence:'ball-teal', Variance:'ball-amber'};
+const TSF_LINE_BALL_CLASS = {Primary:'ball-purple', Persistence:'ball-teal', Variance:'ball-amber', Neighbor:'ball-coral'};
 
 function tsfOnGameChange() {
   const game = document.getElementById('tsf-game').value;
@@ -3014,7 +3014,7 @@ function renderTsfDashboard(r) {
   const hypSection = `
     <div class="card">
       <h2>🧠 Competing Hypotheses</h2>
-      <div class="grid3">${hypCards}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;">${hypCards}</div>
     </div>`;
 
   const lineCards = r.lines.map(l=>`
@@ -3034,9 +3034,9 @@ function renderTsfDashboard(r) {
     </div>`).join('');
   const linesSection = `
     <div class="card">
-      <h2>🎯 Three Prediction Lines</h2>
+      <h2>🎯 Prediction Lines</h2>
       <p class="sub">Main numbers only — TSF doesn't model the bonus ball.</p>
-      <div class="grid3">${lineCards}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;">${lineCards}</div>
     </div>`;
 
   const commitCard = `
@@ -3305,7 +3305,7 @@ function renderTsfTrackRecord(forecasts, summary) {
   if(summary && summary.scored_count > 0) {
     summaryEl.innerHTML = `
       <div class="section-label">Per-dimension hit rate (${summary.scored_count} scored forecast${summary.scored_count===1?'':'s'})</div>
-      <div class="grid3">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
         ${Object.entries(summary.by_hypothesis).map(([label, agg])=>`
           <div class="metric">
             <div class="metric-label">${label} · avg ${agg.avg_exact_hits} hits</div>

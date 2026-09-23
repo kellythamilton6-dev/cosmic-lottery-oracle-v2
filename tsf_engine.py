@@ -631,6 +631,70 @@ def _weakest_link(confs):
 
 NEIGHBOR_AGREEMENT_BONUS = {'Low': 'Medium', 'Medium': 'High', 'High': 'High'}
 
+# Confidence thresholds for the Neighbor hypothesis, scaled for the K=15
+# neighbor sample specifically -- confidence_label() forces 'Low' below
+# MIN_TRANSITION_SAMPLE=30, which every neighbor count would hit, so it's
+# not usable here. Most dimensions split 2-3 ways, so beating a plain
+# majority (>=50%) is High, beating a 3-way coin-flip (>=35%) is Medium.
+NEIGHBOR_CONSENSUS_HIGH_PCT = 0.5
+NEIGHBOR_CONSENSUS_MEDIUM_PCT = 0.35
+
+# How hard the Neighbor hypothesis's own candidate pool leans on the K
+# neighbors' follow-up numbers (via build_candidate_pool's
+# neighbor_weight_override) -- 45 makes Tier 1 100% neighbor-driven, 0%
+# decade persistence (persistence_weight = 45 - neighbor_weight). A real-
+# draw accuracy backtest found no exact-hit improvement from any weight
+# value over the 30/15 default, so this isn't chosen for accuracy -- it's
+# chosen to make this hypothesis's own numbers as genuinely distinct from
+# Primary/Persistence/Variance as its target regimes already are.
+NEIGHBOR_CONSENSUS_POOL_WEIGHT = 45
+
+
+def _neighbor_consensus_hypothesis(neighbor_signal):
+    """A 4th hypothesis, distinct from Primary/Persistence/Variance: trusts
+    the K structurally similar historical draws' own followups fully, both
+    for which regime each dimension targets (no calibration-validated-dims
+    gate -- that's Primary's job) and for which numbers fill the line (see
+    tsf_forecast()'s neighbor_weight_override=45 candidate pool, giving this
+    hypothesis's own pool a much heavier neighbor pull than the 15% default).
+    Returns None when there's no usable neighbor signal at all (e.g.
+    draw_type='doubleplay', or too few structurally similar draws with a
+    recorded followup) -- an honestly absent hypothesis, not a guess."""
+    if not neighbor_signal or neighbor_signal['sample_size'] < NEIGHBOR_MIN_SAMPLE_FOR_SIGNAL:
+        return None
+
+    targets, confs, parts = {}, {}, []
+    for d in DIMENSIONS:
+        dist = neighbor_signal['by_dimension'].get(d)
+        if not dist:
+            continue
+        top_val = max(dist, key=lambda v: dist[v]['pct'])
+        top_pct = dist[top_val]['pct']
+        targets[d] = top_val
+        if top_pct >= NEIGHBOR_CONSENSUS_HIGH_PCT:
+            conf = 'High'
+        elif top_pct >= NEIGHBOR_CONSENSUS_MEDIUM_PCT:
+            conf = 'Medium'
+        else:
+            conf = 'Low'
+        confs[d] = conf
+        parts.append(
+            f"{DIM_LABELS[d]}: {top_val} followed {top_pct*100:.0f}% of the "
+            f"{neighbor_signal['sample_size']} most structurally similar historical "
+            f"draws with a recorded followup — {conf} confidence."
+        )
+    if not targets:
+        return None
+
+    return {
+        'label': 'Neighbor',
+        'name': 'Structural similarity consensus',
+        'target_regimes': targets,
+        'confidence': _weakest_link(confs),
+        'per_dimension_confidence': confs,
+        'rationale': ' '.join(parts),
+    }
+
 
 def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None, game=None, draw_type='main'):
     hypotheses = []
@@ -691,6 +755,10 @@ def build_hypotheses(current_regimes, lookup, cfg, neighbor_signal=None, game=No
     hypotheses.append(_line('Primary', 'Most likely transition', lambda d, frm, e: _primary_target_with_neighbor(d, frm, e, neighbor_signal, game, draw_type)))
     hypotheses.append(_line('Persistence', 'Persistence / continuation scenario', lambda d, frm, e: frm))
     hypotheses.append(_line('Variance', 'Variance / reversal scenario', _variance_target_with_neighbor))
+
+    neighbor_hyp = _neighbor_consensus_hypothesis(neighbor_signal)
+    if neighbor_hyp:
+        hypotheses.append(neighbor_hyp)
 
     return hypotheses
 
@@ -992,8 +1060,15 @@ def tsf_forecast(game='powerball', draw_type='main'):
     recurrence = recurrence_profile(series)
     concentration_prof = concentration_profile(series)
 
+    base_hypotheses = [h for h in hypotheses if h['label'] != 'Neighbor']
+    neighbor_hyp = [h for h in hypotheses if h['label'] == 'Neighbor']
+
     pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data, decade_bins, current['numbers'], neighbor_signal, decade_lookup, game=game, draw_type=draw_type)
-    lines = generate_lines(pool, hypotheses, max_num, main_count, cutoffs, decade_bins, persistent, series)
+    lines = generate_lines(pool, base_hypotheses, max_num, main_count, cutoffs, decade_bins, persistent, series)
+
+    if neighbor_hyp:
+        neighbor_pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data, decade_bins, current['numbers'], neighbor_signal, decade_lookup, neighbor_weight_override=NEIGHBOR_CONSENSUS_POOL_WEIGHT, game=game, draw_type=draw_type)
+        lines += generate_lines(neighbor_pool, neighbor_hyp, max_num, main_count, cutoffs, decade_bins, persistent, series)
 
     as_of_date = datetime.strptime(draws[0]['date'], '%Y-%m-%d').date()
     target_date = next_scheduled_draw_date(game, as_of_date)
@@ -1442,8 +1517,11 @@ def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, d
     max_num, main_count = cfg['max_num'], cfg['main_count']
     decade_bins = _decade_bins(max_num)
 
-    stats = {label: {'n': 0, 'exact_hits': 0, 'dims_correct': {d: 0 for d in DIMENSIONS}, 'range_correct': 0}
-              for label in ('Primary', 'Persistence', 'Variance')}
+    # Not pre-initialized to a fixed set of labels: the Neighbor hypothesis
+    # only exists at anchors with a usable point-in-time neighbor signal, so
+    # which labels appear can vary anchor to anchor. Lazily created below via
+    # setdefault() the first time each label is actually seen.
+    stats = {}
     n_tested = 0
 
     for ti in indices:
@@ -1473,15 +1551,27 @@ def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, d
         persistent = persistent_zones(series, decade_bins)
         recurrence = recurrence_profile(series)
 
+        base_hypotheses = [h for h in hypotheses if h['label'] != 'Neighbor']
+        neighbor_hyp = [h for h in hypotheses if h['label'] == 'Neighbor']
+
         pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data,
                                      decade_bins, anchor_draw['numbers'], neighbor_signal, decade_lookup,
                                      neighbor_weight_override, game=game, draw_type=draw_type)
+        neighbor_pool = None
+        if neighbor_hyp:
+            neighbor_pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data,
+                                                  decade_bins, anchor_draw['numbers'], neighbor_signal, decade_lookup,
+                                                  neighbor_weight_override=NEIGHBOR_CONSENSUS_POOL_WEIGHT,
+                                                  game=game, draw_type=draw_type)
 
-        exact_hits_sum = {label: 0 for label in stats}
-        range_correct_sum = {label: 0 for label in stats}
+        anchor_labels = [h['label'] for h in base_hypotheses] + [h['label'] for h in neighbor_hyp]
+        exact_hits_sum = {label: 0 for label in anchor_labels}
+        range_correct_sum = {label: 0 for label in anchor_labels}
         dims_correct_this_anchor = {}
         for sample_i in range(samples_per_draw):
-            lines = generate_lines(pool, hypotheses, max_num, main_count, cutoffs, decade_bins, persistent, series)
+            lines = generate_lines(pool, base_hypotheses, max_num, main_count, cutoffs, decade_bins, persistent, series)
+            if neighbor_hyp:
+                lines += generate_lines(neighbor_pool, neighbor_hyp, max_num, main_count, cutoffs, decade_bins, persistent, series)
             scorecard = score_forecast(lines, target_draw['numbers'], max_num, main_count, cutoffs)
             for lc in scorecard['lines']:
                 label = lc['hypothesis']
@@ -1490,7 +1580,8 @@ def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, d
                 if sample_i == 0:
                     dims_correct_this_anchor[label] = {d: lc[key] for d, key in DIM_SCORE_KEYS}
 
-        for label, s in stats.items():
+        for label in anchor_labels:
+            s = stats.setdefault(label, {'n': 0, 'exact_hits': 0, 'dims_correct': {d: 0 for d in DIMENSIONS}, 'range_correct': 0})
             s['n'] += 1
             s['exact_hits'] += exact_hits_sum[label] / samples_per_draw
             s['range_correct'] += range_correct_sum[label] / samples_per_draw
