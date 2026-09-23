@@ -736,8 +736,20 @@ def concentration_profile(series, n=STRUCTURAL_WINDOW_SHORT):
 
 DECADE_TRANSITION_BUCKET_FACTOR = {'many': 1.15, 'few': 1.0, 'none': 0.85}
 
+# Which decade bins (by index into _decade_bins(max_num)) get the transition
+# nudge applied at all, per (game, draw_type). A key MISSING from this dict
+# defaults to every bin enabled (the always-on behavior this mechanism had
+# before it was ever backtested); an explicit empty set() means "backtested,
+# none of them validated" -- deliberately different from missing so it's
+# clear this game's bins were actually checked, not just never looked at.
+# Ported from v1, which found this mechanism added no real signal for
+# Florida Lotto (every bin degenerated to the same guess as the naive
+# baseline) -- but that finding doesn't transfer here; see the "decade_bins"
+# section of calibration_report()'s output once it's been run for these games.
+DECADE_TRANSITION_ENABLED_BINS_BY_GAME_DRAWTYPE = {}
 
-def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_data, gap_data, decade_bins, current_numbers, neighbor_signal=None, decade_lookup=None, neighbor_weight_override=None):
+
+def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_data, gap_data, decade_bins, current_numbers, neighbor_signal=None, decade_lookup=None, neighbor_weight_override=None, game=None, draw_type='main'):
     """One shared {number: score} pool for all three lines, weighted to
     the user's stated Tier 1/2/3 hierarchy -- deliberately NOT
     pattern_predict()'s frequency/Markov/moon-weighted scorer, which is
@@ -782,12 +794,13 @@ def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_
     # weighted tier, and only nudges a bin toward/away from its already-
     # computed persistence score rather than overriding it.
     decade_lookup = decade_lookup or {}
+    enabled_decade_bins = DECADE_TRANSITION_ENABLED_BINS_BY_GAME_DRAWTYPE.get((game, draw_type), set(range(len(decade_bins))))
 
     persistence_by_num = {}
     for bidx, (lo, hi) in enumerate(decade_bins):
         info = persistent[bidx]
         score = (info[f'window_{STRUCTURAL_WINDOW_SHORT}']['coverage'] + info[f'window_{STRUCTURAL_WINDOW_LONG}']['coverage']) / 2
-        bin_transition = decade_lookup.get(bidx, {}).get('to_values')
+        bin_transition = decade_lookup.get(bidx, {}).get('to_values') if bidx in enabled_decade_bins else None
         if bin_transition:
             predicted_bucket = max(bin_transition, key=lambda v: bin_transition[v]['pct'])
             score *= DECADE_TRANSITION_BUCKET_FACTOR.get(predicted_bucket, 1.0)
@@ -974,7 +987,7 @@ def tsf_forecast(game='powerball', draw_type='main'):
     recurrence = recurrence_profile(series)
     concentration_prof = concentration_profile(series)
 
-    pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data, decade_bins, current['numbers'], neighbor_signal, decade_lookup)
+    pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data, decade_bins, current['numbers'], neighbor_signal, decade_lookup, game=game, draw_type=draw_type)
     lines = generate_lines(pool, hypotheses, max_num, main_count, cutoffs, decade_bins, persistent, series)
 
     as_of_date = datetime.strptime(draws[0]['date'], '%Y-%m-%d').date()
@@ -1116,6 +1129,8 @@ def _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, indices
 
     primary_differ = {d: {'n': 0, 'agg': 0, 'nbr': 0} for d in DIMENSIONS}
     variance_differ = {d: {'n': 0, 'gen': 0, 'nbr': 0} for d in DIMENSIONS}
+    decade_bins_list = _decade_bins(max_num)
+    decade_stats = {bidx: {'n': 0, 'base': 0, 'nbr': 0} for bidx in range(len(decade_bins_list))}
     n_tested = 0
 
     for ti in indices:
@@ -1162,6 +1177,30 @@ def _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, indices
 
         target_regimes = classify_regimes(structural_state(target_draw['numbers'], max_num), cutoffs, main_count)
 
+        # Decade-bin transition backtest: does the transition-conditioned
+        # majority-vote prediction for each bin's none/few/many bucket beat
+        # a naive baseline (this bin's own most common bucket overall,
+        # unconditional on the current bucket) -- the fair "what would you
+        # guess without this mechanism" comparison, computed from the same
+        # point-in-time-correct history so neither side sees anything the
+        # other doesn't.
+        current_decade_buckets = {bidx: _count_bucket(c) for bidx, c in enumerate(anchor_features['decade_histogram'])}
+        decade_lookup = decade_transition_lookup(transitions, current_decade_buckets, series)
+        target_decade_hist = compute_features(target_draw['numbers'], max_num)['decade_histogram']
+        for bidx in range(len(decade_bins_list)):
+            entry_d = decade_lookup.get(bidx, {'sample_size': 0, 'to_values': {}})
+            if entry_d['sample_size'] == 0 or not entry_d['to_values']:
+                continue
+            predicted_bucket = max(entry_d['to_values'], key=lambda v: entry_d['to_values'][v]['pct'])
+            actual_bucket = _count_bucket(target_decade_hist[bidx])
+            bucket_counts = Counter(_count_bucket(s['state']['decade_histogram'][bidx]) for s in series)
+            if not bucket_counts:
+                continue
+            baseline_bucket = bucket_counts.most_common(1)[0][0]
+            decade_stats[bidx]['n'] += 1
+            decade_stats[bidx]['base'] += int(baseline_bucket == actual_bucket)
+            decade_stats[bidx]['nbr'] += int(predicted_bucket == actual_bucket)
+
         for d in DIMENSIONS:
             frm = anchor_regimes[d]
             entry = lookup.get(d, {'to_values': {}})
@@ -1191,7 +1230,7 @@ def _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, indices
                 if nbr_tgt_variance == target_regimes[d]:
                     variance_differ[d]['nbr'] += 1
 
-    return n_tested, primary_differ, variance_differ
+    return n_tested, primary_differ, variance_differ, decade_stats
 
 
 def _calibration_verdict(train_stat, test_stat, baseline_key, current_dims, dim):
@@ -1259,11 +1298,13 @@ def calibration_report(game, draw_type='main', months=12, k=NEIGHBOR_K):
     mid = len(target_indices) // 2
     train_idx, test_idx = target_indices[:mid], target_indices[mid:]
 
-    n_train, primary_train, variance_train = _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, train_idx, k)
-    n_test, primary_test, variance_test = _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, test_idx, k)
+    n_train, primary_train, variance_train, decade_train = _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, train_idx, k)
+    n_test, primary_test, variance_test, decade_test = _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, test_idx, k)
 
     current_primary_dims = NEIGHBOR_PREFERRED_DIMS_BY_GAME_DRAWTYPE.get((game, draw_type), set())
     current_variance_dims = VARIANCE_NEIGHBOR_DIMS_BY_GAME_DRAWTYPE.get((game, draw_type), set())
+    decade_bins_list = _decade_bins(max_num)
+    current_decade_bins = DECADE_TRANSITION_ENABLED_BINS_BY_GAME_DRAWTYPE.get((game, draw_type), set(range(len(decade_bins_list))))
 
     primary_findings, variance_findings = {}, {}
     any_changes = False
@@ -1275,6 +1316,15 @@ def calibration_report(game, draw_type='main', months=12, k=NEIGHBOR_K):
         if pf['recommendation'] in ('add', 'remove') or vf['recommendation'] in ('add', 'remove'):
             any_changes = True
 
+    decade_findings = {}
+    for bidx in range(len(decade_bins_list)):
+        lo, hi = decade_bins_list[bidx]
+        label = f'{lo}-{hi}'
+        df = _calibration_verdict(decade_train[bidx], decade_test[bidx], 'base', current_decade_bins, bidx)
+        decade_findings[label] = df
+        if df['recommendation'] in ('add', 'remove'):
+            any_changes = True
+
     return {
         'game': game,
         'draw_type': draw_type,
@@ -1284,9 +1334,11 @@ def calibration_report(game, draw_type='main', months=12, k=NEIGHBOR_K):
         'n_test_draws': n_test,
         'primary': primary_findings,
         'variance': variance_findings,
+        'decade_bins': decade_findings,
         'current_config': {
             'primary_preferred_dims': sorted(current_primary_dims),
             'variance_preferred_dims': sorted(current_variance_dims),
+            'decade_bins_enabled': sorted(current_decade_bins),
         },
         'any_changes_suggested': any_changes,
     }
@@ -1418,7 +1470,7 @@ def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, d
 
         pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data,
                                      decade_bins, anchor_draw['numbers'], neighbor_signal, decade_lookup,
-                                     neighbor_weight_override)
+                                     neighbor_weight_override, game=game, draw_type=draw_type)
 
         exact_hits_sum = {label: 0 for label in stats}
         range_correct_sum = {label: 0 for label in stats}

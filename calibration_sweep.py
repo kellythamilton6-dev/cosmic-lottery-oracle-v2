@@ -75,7 +75,7 @@ def main():
         print(f"{game}/{draw_type}: n_train={r['n_train_draws']} n_test={r['n_test_draws']} -- {flag}")
         if r["any_changes_suggested"]:
             any_flagged = True
-            for section in ("primary", "variance"):
+            for section in ("primary", "variance", "decade_bins"):
                 for dim, v in r[section].items():
                     if v["recommendation"] != "no_change":
                         print(f"    [{section}] {dim}: {v['verdict']} -> {v['recommendation']} "

@@ -840,6 +840,7 @@ TSF_CREATE_TABLE_SQL = """
         structural_state JSONB NOT NULL,
         persistent_zones JSONB NOT NULL,
         transitions JSONB NOT NULL,
+        decade_transitions JSONB,
         hypotheses JSONB NOT NULL,
         lines JSONB NOT NULL,
         actual_numbers VARCHAR(100),
@@ -849,6 +850,12 @@ TSF_CREATE_TABLE_SQL = """
         scored_at TIMESTAMP,
         UNIQUE (game, draw_type, target_draw_date)
     )
+"""
+# decade_transitions didn't exist when this table was first created, so
+# existing deployments need it added explicitly -- CREATE TABLE IF NOT
+# EXISTS above only applies to a table that doesn't exist yet.
+TSF_ADD_DECADE_TRANSITIONS_COLUMN_SQL = """
+    ALTER TABLE tsf_forecasts ADD COLUMN IF NOT EXISTS decade_transitions JSONB
 """
 
 @app.get("/tsf/forecast")
@@ -881,6 +888,7 @@ def tsf_commit(req: TsfCommitRequest):
 
         with engine.connect() as conn:
             conn.execute(text(TSF_CREATE_TABLE_SQL))
+            conn.execute(text(TSF_ADD_DECADE_TRANSITIONS_COLUMN_SQL))
             existing = conn.execute(text("""
                 SELECT id, committed_at FROM tsf_forecasts
                 WHERE game = :game AND draw_type = :draw_type AND target_draw_date = :target
@@ -894,10 +902,11 @@ def tsf_commit(req: TsfCommitRequest):
             row = conn.execute(text("""
                 INSERT INTO tsf_forecasts
                 (game, draw_type, model_version, as_of_draw_date, target_draw_date,
-                 structural_state, persistent_zones, transitions, hypotheses, lines)
+                 structural_state, persistent_zones, transitions, decade_transitions, hypotheses, lines)
                 VALUES (:game, :draw_type, :model_version, :as_of, :target,
                  CAST(:structural_state AS JSONB), CAST(:persistent_zones AS JSONB),
-                 CAST(:transitions AS JSONB), CAST(:hypotheses AS JSONB), CAST(:lines AS JSONB))
+                 CAST(:transitions AS JSONB), CAST(:decade_transitions AS JSONB),
+                 CAST(:hypotheses AS JSONB), CAST(:lines AS JSONB))
                 RETURNING id
             """), {
                 "game": req.game, "draw_type": req.draw_type, "model_version": MODEL_VERSION,
@@ -905,6 +914,7 @@ def tsf_commit(req: TsfCommitRequest):
                 "structural_state": _json.dumps(result['current_state']),
                 "persistent_zones": _json.dumps(result['persistent_zones']),
                 "transitions": _json.dumps(result['transitions']),
+                "decade_transitions": _json.dumps(result['decade_transitions']),
                 "hypotheses": _json.dumps(result['hypotheses']),
                 "lines": _json.dumps(result['lines']),
             })
@@ -986,11 +996,12 @@ def tsf_history(game: str = "powerball", draw_type: str = "main", limit: int = 5
     try:
         with engine.connect() as conn:
             conn.execute(text(TSF_CREATE_TABLE_SQL))
+            conn.execute(text(TSF_ADD_DECADE_TRANSITIONS_COLUMN_SQL))
             conn.commit()
             rows = conn.execute(text("""
                 SELECT id, game, draw_type, model_version, as_of_draw_date, target_draw_date,
                        committed_at, hypotheses, lines, actual_numbers, actual_draw_date,
-                       scored, scorecard, scored_at
+                       scored, scorecard, scored_at, decade_transitions
                 FROM tsf_forecasts
                 WHERE game = :game AND draw_type = :draw_type
                 ORDER BY committed_at DESC LIMIT :limit
@@ -1003,6 +1014,7 @@ def tsf_history(game: str = "powerball", draw_type: str = "main", limit: int = 5
                 "actual_numbers": r[9], "actual_draw_date": str(r[10]) if r[10] else None,
                 "scored": r[11], "scorecard": r[12],
                 "scored_at": str(r[13]) if r[13] else None,
+                "decade_transitions": r[14],
             } for r in rows
         ]}
     except Exception as e:
