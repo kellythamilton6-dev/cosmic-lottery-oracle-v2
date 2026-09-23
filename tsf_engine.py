@@ -725,7 +725,7 @@ def concentration_profile(series, n=STRUCTURAL_WINDOW_SHORT):
 DECADE_TRANSITION_BUCKET_FACTOR = {'many': 1.15, 'few': 1.0, 'none': 0.85}
 
 
-def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_data, gap_data, decade_bins, current_numbers, neighbor_signal=None, decade_lookup=None):
+def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_data, gap_data, decade_bins, current_numbers, neighbor_signal=None, decade_lookup=None, neighbor_weight_override=None):
     """One shared {number: score} pool for all three lines, weighted to
     the user's stated Tier 1/2/3 hierarchy -- deliberately NOT
     pattern_predict()'s frequency/Markov/moon-weighted scorer, which is
@@ -735,15 +735,32 @@ def build_candidate_pool(max_num, main_count, persistent, recurrence_data, freq_
 
     # Tier 1 (45%): decade-bin persistence, split with nearest-neighbor
     # follow-up frequency (which specific numbers followed the K
-    # structurally similar historical draws) when there's enough of a
-    # sample to say anything -- purely additive: falls back to the
-    # original 45%-persistence-alone calibration when the neighbor signal
-    # isn't available (e.g. draw_type='doubleplay', or too few of the K
-    # matches have a followup drawing on record yet), so this never dilutes
-    # the existing signal, only supplements it.
-    has_neighbor = neighbor_signal and neighbor_signal['sample_size'] >= NEIGHBOR_MIN_SAMPLE_FOR_SIGNAL
-    persistence_weight = 30.0 if has_neighbor else 45.0
-    neighbor_weight = 15.0 if has_neighbor else 0.0
+    # structurally similar historical draws) whenever there's any real
+    # data to draw from at all -- by request, always on rather than gated
+    # behind NEIGHBOR_MIN_SAMPLE_FOR_SIGNAL (that threshold still guards
+    # the separate regime-target-selection use of the neighbor signal in
+    # _primary_target_with_neighbor/_variance_target_with_neighbor_impl,
+    # just not this number-level weighting). Still falls back to the
+    # original 45%-persistence-alone calibration when there's no neighbor
+    # signal at all (e.g. draw_type='doubleplay') or literally zero
+    # matches have a followup drawing on record yet, since splitting
+    # weight toward an empty top_numbers list would only throw away
+    # persistence weight for nothing in return. A real-draw accuracy
+    # backtest (line_backtest_report with neighbor_weight_override) found
+    # no evidence that a heavier neighbor_weight actually improves
+    # accuracy over this 30/15 default -- lift stayed flat around 1.0
+    # regardless of weight -- so the default here is unchanged from what
+    # was already validated, just no longer gated off for small samples.
+    has_neighbor = bool(neighbor_signal) and neighbor_signal['sample_size'] > 0
+    if has_neighbor and neighbor_weight_override is not None:
+        # Test-only lever for backtesting whether a different split of
+        # Tier 1's 45% actually improves line accuracy -- not used by the
+        # live app, which always takes the validated 30/15 default below.
+        neighbor_weight = neighbor_weight_override
+        persistence_weight = 45.0 - neighbor_weight
+    else:
+        persistence_weight = 30.0 if has_neighbor else 45.0
+        neighbor_weight = 15.0 if has_neighbor else 0.0
 
     # Decade-bin transition data ("few 20s -> many 20s") modestly
     # modulates each bin's persistence score -- unlike the neighbor
@@ -1342,7 +1359,7 @@ DIM_SCORE_KEYS = (
 )
 
 
-def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, draw_type='main', samples_per_draw=10):
+def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, draw_type='main', samples_per_draw=10, neighbor_weight_override=None):
     """generate_lines() samples randomly (_weighted_pick uses random.uniform),
     so a single generated line per anchor draw is one noisy realization --
     re-running the report gave visibly different avg_exact_hits each time.
@@ -1388,7 +1405,8 @@ def _line_backtest_pass(chrono, date_to_idx, cfg, game, indices, k=NEIGHBOR_K, d
         recurrence = recurrence_profile(series)
 
         pool = build_candidate_pool(max_num, main_count, persistent, recurrence, freq_data, gap_data,
-                                     decade_bins, anchor_draw['numbers'], neighbor_signal, decade_lookup)
+                                     decade_bins, anchor_draw['numbers'], neighbor_signal, decade_lookup,
+                                     neighbor_weight_override)
 
         exact_hits_sum = {label: 0 for label in stats}
         range_correct_sum = {label: 0 for label in stats}
@@ -1430,7 +1448,7 @@ def _summarize_line_stats(stats, max_num, main_count):
     return out
 
 
-def line_backtest_report(game, draw_type='main', months=12, k=NEIGHBOR_K, samples_per_draw=10):
+def line_backtest_report(game, draw_type='main', months=12, k=NEIGHBOR_K, samples_per_draw=10, neighbor_weight_override=None):
     cfg = get_config(game)
     max_num, main_count = cfg['max_num'], cfg['main_count']
     all_draws = load_draws(game, draw_type=draw_type)
@@ -1450,8 +1468,8 @@ def line_backtest_report(game, draw_type='main', months=12, k=NEIGHBOR_K, sample
     mid = len(target_indices) // 2
     train_idx, test_idx = target_indices[:mid], target_indices[mid:]
 
-    n_train, train_stats = _line_backtest_pass(chrono, date_to_idx, cfg, game, train_idx, k, draw_type, samples_per_draw)
-    n_test, test_stats = _line_backtest_pass(chrono, date_to_idx, cfg, game, test_idx, k, draw_type, samples_per_draw)
+    n_train, train_stats = _line_backtest_pass(chrono, date_to_idx, cfg, game, train_idx, k, draw_type, samples_per_draw, neighbor_weight_override)
+    n_test, test_stats = _line_backtest_pass(chrono, date_to_idx, cfg, game, test_idx, k, draw_type, samples_per_draw, neighbor_weight_override)
 
     return {
         'game': game,
