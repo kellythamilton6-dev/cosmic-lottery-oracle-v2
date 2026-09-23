@@ -294,6 +294,7 @@
       <div class="card" style="border-color:var(--purple);">
         <div class="stars" style="font-size:14px;">🧭 STRUCTURAL FORECAST</div>
         <p id="tsf-gen-sub" style="font-size:13px;color:var(--text2);margin-bottom:16px;"></p>
+        <div id="tsf-gen-neighbor" style="margin-bottom:16px;"></div>
         <div class="grid3" id="tsf-gen-lines"></div>
         <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn btn-secondary" style="font-size:13px;padding:7px 16px;" onclick="generateNumbers()">⟳ Regenerate</button>
@@ -1423,6 +1424,16 @@ const TSF_GEN_BALL_CLASS = {Primary:'ball-purple', Persistence:'ball-teal', Vari
 
 function displayTsfGenResults(r) {
   document.getElementById('tsf-gen-sub').textContent = `As of ${r.as_of_draw_date} · Next draw ${r.target_draw_date} · ${r.game}`;
+  const ns = r.neighbor_signal;
+  const neighborEl = document.getElementById('tsf-gen-neighbor');
+  if (ns && ns.sample_size > 0) {
+    const topNumRow = ns.top_numbers.slice(0, 8).map(t => `<span class="badge badge-moon">${t.number} ×${t.count}</span>`).join('');
+    neighborEl.innerHTML = `
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px;">🔍 Based on the ${ns.sample_size} historical draws most structurally similar to this one — numbers that followed them most often:</div>
+      <div>${topNumRow}</div>`;
+  } else {
+    neighborEl.innerHTML = `<div style="font-size:11px;color:var(--text2);">🔍 ${r.draw_type === 'doubleplay' ? 'Nearest-neighbor matching isn’t available for Double Play.' : 'Not enough structurally similar historical draws with a recorded followup yet.'}</div>`;
+  }
   document.getElementById('tsf-gen-lines').innerHTML = r.lines.map(l=>`
     <div class="card" style="margin-bottom:0;">
       <h2>${l.hypothesis}</h2>
