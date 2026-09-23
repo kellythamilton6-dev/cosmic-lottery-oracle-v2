@@ -552,9 +552,24 @@ def _variance_target(dim, frm_val, entry):
 # excluded. parity_regime (63%/57% vs 15%/18%), low_high_regime
 # (61%/68% vs 10%/16%), concentration_regime (81%/79% vs 19%/21%),
 # consecutive_regime (76%/84% vs 3%/0%) all won consistently.
-VARIANCE_NEIGHBOR_DIMS_BY_GAME = {
-    'powerball': {'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
-    'megamillions': {'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
+#
+# Keyed by (game, draw_type), not just game: Florida Lotto (v1) hit a
+# case where Main and Double Play validated completely differently for
+# this exact dict, and a single shared set per game silently applied
+# Main's findings to Double Play. As of this pass, calibration_sweep.py
+# shows Powerball Main and Double Play still agree on all 4 dims, so
+# the values are identical for now -- but note this dict has no live
+# effect on Double Play forecasts either way: neighbor_signal is always
+# None for any draw_type != 'main' (tsf_forecast() gates it), so the
+# neighbor-vs-reversal branch these dims control is unreachable for
+# Double Play regardless of what's configured here. Split anyway so
+# calibration_sweep.py catches it immediately if that ever diverges,
+# rather than silently applying the wrong game's Main findings the way
+# it did for Florida Lotto.
+VARIANCE_NEIGHBOR_DIMS_BY_GAME_DRAWTYPE = {
+    ('powerball', 'main'): {'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
+    ('powerball', 'doubleplay'): {'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
+    ('megamillions', 'main'): {'parity_regime', 'low_high_regime', 'concentration_regime', 'consecutive_regime'},
 }
 
 
@@ -587,7 +602,7 @@ def _variance_target_with_neighbor_impl(d, frm_val, entry, neighbor_signal, game
     if d in VARIANCE_AGGREGATE_FALLBACK_DIMS_BY_GAME_DRAWTYPE.get((game, draw_type), set()):
         return _primary_target(entry, frm_val)
     generic_tgt = _variance_target(d, frm_val, entry)
-    preferred_dims = VARIANCE_NEIGHBOR_DIMS_BY_GAME.get(game, set())
+    preferred_dims = VARIANCE_NEIGHBOR_DIMS_BY_GAME_DRAWTYPE.get((game, draw_type), set())
     if d not in preferred_dims:
         return generic_tgt
     neighbor_val, _ = _neighbor_top(neighbor_signal, d)
@@ -1051,7 +1066,7 @@ def track_record_summary(scored_rows, model_version=MODEL_VERSION):
 # ============================================================
 # CALIBRATION REPORT -- re-runs the same held-out backtest that
 # originally validated NEIGHBOR_PREFERRED_DIMS_BY_GAME and
-# VARIANCE_NEIGHBOR_DIMS_BY_GAME, so the calibration can be refreshed as
+# VARIANCE_NEIGHBOR_DIMS_BY_GAME_DRAWTYPE, so the calibration can be refreshed as
 # more data accumulates without a one-off script. Point-in-time-correct
 # (no lookahead): each target draw's neighbor search only considers
 # draws strictly before it, matching what the live model would have
@@ -1219,7 +1234,7 @@ def calibration_report(game, draw_type='main', months=12, k=NEIGHBOR_K):
     n_test, primary_test, variance_test = _calibration_backtest_pass(chrono, date_to_idx, max_num, main_count, test_idx, k)
 
     current_primary_dims = NEIGHBOR_PREFERRED_DIMS_BY_GAME.get(game, set())
-    current_variance_dims = VARIANCE_NEIGHBOR_DIMS_BY_GAME.get(game, set())
+    current_variance_dims = VARIANCE_NEIGHBOR_DIMS_BY_GAME_DRAWTYPE.get((game, draw_type), set())
 
     primary_findings, variance_findings = {}, {}
     any_changes = False
