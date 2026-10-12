@@ -309,6 +309,7 @@
         <p id="result-sub" style="font-size:13px;color:var(--text2);margin-bottom:16px;"></p>
         <div class="section-label">Primary prediction</div>
         <div class="balls-row" id="balls-primary"></div>
+        <div id="primary-summary" style="margin-top:8px;display:none;"></div>
         <div class="section-label" style="margin-top:12px;">Alternative A</div>
         <div class="balls-row" id="balls-alt-a"></div>
         <div id="alt-a-summary" style="margin-top:8px;display:none;"></div>
@@ -1272,7 +1273,7 @@ function explainNumbers(result) {
   nakshatraNumbers.forEach(n => { for(let m=1;m*n<=maxNum;m++) vedicNums.add(n*m); });
   (PLANET_NUMS[nakshatraRuler]||[]).forEach(n => vedicNums.add(n));
 
-  let html = `<div style="margin-top:20px;"><div class="section-label" style="margin-bottom:12px;">✦ Number Meanings &amp; Cosmic Explanations</div>`;
+  let detail = '';
 
   primary.forEach(num => {
     const reasons = [];
@@ -1300,13 +1301,11 @@ function explainNumbers(result) {
       tags.push('<span class="badge badge-num">Numerology</span>');
     }
     if(reasons.length===0) {
-      // Field-energy fallback — still unique per number
       const ds = digitSum(num);
       reasons.push(`<span style="color:#5FD9AE;">☽ ${nakshatra} nakshatra:</span> ${num} (digit sum ${ds}) emerges from the weighted probability field under ${nakshatra}. While not a primary sacred number, its position at ${Math.round((num/maxNum)*100)}% of the range and digit resonance of ${ds} aligns with ${nakshatraRuler}'s broader influence on today's draw.`);
       tags.push('<span class="badge badge-vedic">Vedic</span>');
     }
 
-    // Append unique mathematical properties if interesting
     const props = numberProperties(num);
     const propNote = props.length > 0
       ? `<div style="margin-top:8px;font-size:11px;color:var(--text2);border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;">
@@ -1314,7 +1313,7 @@ function explainNumbers(result) {
          </div>`
       : '';
 
-    html += `<div style="background:var(--bg3);border-radius:10px;padding:14px 16px;margin-bottom:10px;border-left:3px solid var(--purple);">
+    detail += `<div style="background:var(--bg3);border-radius:10px;padding:14px 16px;margin-bottom:10px;border-left:3px solid var(--purple);">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
         <span class="ball ball-purple" style="width:36px;height:36px;font-size:14px;flex-shrink:0;">${num}</span>
         <div>${tags.join('')}</div>
@@ -1324,7 +1323,22 @@ function explainNumbers(result) {
     </div>`;
   });
 
-  html += `</div><div style="margin-top:20px;">
+  const primarySummaryHtml = `
+    <div style="background:var(--bg2);border-radius:10px;padding:12px 14px;border-left:3px solid var(--purple);margin-bottom:4px;">
+      <button onclick="document.getElementById('primary-detail').style.display=document.getElementById('primary-detail').style.display==='none'?'block':'none';this.textContent=this.textContent.includes('Show')?'Hide number explanations ▲':'Show number explanations ▼';"
+        style="background:none;border:1px solid var(--border);color:var(--text2);font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;">
+        Show number explanations ▼
+      </button>
+    </div>
+    <div id="primary-detail" style="display:none;margin-top:6px;">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;padding-left:2px;">✦ Number meanings &amp; cosmic explanations — Primary</div>
+      ${detail}
+    </div>`;
+
+  const el = document.getElementById('primary-summary');
+  if(el){ el.innerHTML = primarySummaryHtml; el.style.display = 'block'; }
+
+  let html = `<div style="margin-top:20px;">
     <div class="section-label" style="margin-bottom:12px;">✦ Your Cosmic Profile Explained</div>
     <div class="grid2">
       <div style="background:var(--bg3);border-radius:10px;padding:14px;border-top:2px solid #A99FF8;">
