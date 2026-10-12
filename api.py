@@ -75,6 +75,9 @@ DB_URL = (
     os.environ.get("DATABASE_PUBLIC_URL") or
     "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery_v2"
 )
+DB_URL = DB_URL.replace("postgresql+psycopg://", "postgresql+psycopg2://")
+if not DB_URL.startswith("postgresql+psycopg2://"):
+    DB_URL = DB_URL.replace("postgresql://", "postgresql+psycopg2://").replace("postgres://", "postgresql+psycopg2://")
 engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=280)
 
 # In-memory record of the most recent sync attempt (scheduled or manual),
@@ -316,7 +319,6 @@ def create_checkout_session(user_id: str = Depends(get_user_id)):
 
         session = stripe.checkout.Session.create(
             customer=customer_id,
-            payment_method_types=["card"],
             line_items=[{"price": STRIPE_PRO_PRICE_ID, "quantity": 1}],
             mode="subscription",
             success_url=f"{FRONTEND_URL}/?upgrade=success",
