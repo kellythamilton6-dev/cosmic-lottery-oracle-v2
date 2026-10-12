@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import date, datetime
@@ -17,6 +17,7 @@ import jwt
 import base64
 import time
 import logging
+import stripe
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -24,6 +25,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("sync")
 
 SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID", "")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://cosmiclotteryoracle.com")
 
 def get_user_id(authorization: Optional[str] = Header(None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
@@ -37,6 +42,33 @@ def get_user_id(authorization: Optional[str] = Header(None)) -> str:
         return user_id
     except jwt.PyJWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
+def get_user_tier(user_id: str) -> str:
+    """Returns 'pro' if user has active subscription, else 'free'."""
+    with engine.connect() as conn:
+        row = conn.execute(text(
+            "SELECT tier FROM subscriptions WHERE user_id = :uid AND status = 'active' LIMIT 1"
+        ), {"uid": user_id}).fetchone()
+    return row[0] if row else "free"
+
+def require_pro(user_id: str = Depends(get_user_id)) -> str:
+    if get_user_tier(user_id) != "pro":
+        raise HTTPException(status_code=402, detail="Pro subscription required")
+    return user_id
+
+def ensure_subscriptions_table(conn):
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            user_id TEXT PRIMARY KEY,
+            stripe_customer_id TEXT,
+            stripe_subscription_id TEXT,
+            status TEXT DEFAULT 'inactive',
+            tier TEXT DEFAULT 'free',
+            current_period_end TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        )
+    """))
 
 DB_URL = (
     os.environ.get("DATABASE_URL") or
@@ -255,6 +287,114 @@ def sync_draws():
 def root():
     return {"message": "✦ Cosmic Lottery Oracle API is running!"}
 
+# ============================================================
+# SUBSCRIPTION ENDPOINTS
+# ============================================================
+
+@app.get("/subscription/status")
+def subscription_status(user_id: str = Depends(get_user_id)):
+    with engine.connect() as conn:
+        ensure_subscriptions_table(conn)
+        row = conn.execute(text(
+            "SELECT tier, status, current_period_end FROM subscriptions WHERE user_id = :uid LIMIT 1"
+        ), {"uid": user_id}).fetchone()
+    if row:
+        return {"tier": row[0], "status": row[1], "current_period_end": str(row[2]) if row[2] else None}
+    return {"tier": "free", "status": "inactive", "current_period_end": None}
+
+@app.post("/stripe/create-checkout-session")
+def create_checkout_session(user_id: str = Depends(get_user_id)):
+    if not stripe.api_key:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+    try:
+        with engine.connect() as conn:
+            ensure_subscriptions_table(conn)
+            row = conn.execute(text(
+                "SELECT stripe_customer_id FROM subscriptions WHERE user_id = :uid LIMIT 1"
+            ), {"uid": user_id}).fetchone()
+        customer_id = row[0] if row and row[0] else None
+
+        session = stripe.checkout.Session.create(
+            customer=customer_id,
+            payment_method_types=["card"],
+            line_items=[{"price": STRIPE_PRO_PRICE_ID, "quantity": 1}],
+            mode="subscription",
+            success_url=f"{FRONTEND_URL}/?upgrade=success",
+            cancel_url=f"{FRONTEND_URL}/?upgrade=cancel",
+            metadata={"user_id": user_id},
+        )
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/stripe/create-portal-session")
+def create_portal_session(user_id: str = Depends(get_user_id)):
+    if not stripe.api_key:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+    with engine.connect() as conn:
+        ensure_subscriptions_table(conn)
+        row = conn.execute(text(
+            "SELECT stripe_customer_id FROM subscriptions WHERE user_id = :uid LIMIT 1"
+        ), {"uid": user_id}).fetchone()
+    if not row or not row[0]:
+        raise HTTPException(status_code=404, detail="No billing account found")
+    session = stripe.billing_portal.Session.create(
+        customer=row[0],
+        return_url=f"{FRONTEND_URL}/",
+    )
+    return {"url": session.url}
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    def upsert_sub(conn, user_id, customer_id, sub_id, status, tier, period_end):
+        conn.execute(text("""
+            INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_subscription_id, status, tier, current_period_end, updated_at)
+            VALUES (:uid, :cid, :sid, :status, :tier, :end, NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                stripe_customer_id = EXCLUDED.stripe_customer_id,
+                stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+                status = EXCLUDED.status,
+                tier = EXCLUDED.tier,
+                current_period_end = EXCLUDED.current_period_end,
+                updated_at = NOW()
+        """), {"uid": user_id, "cid": customer_id, "sid": sub_id, "status": status, "tier": tier, "end": period_end})
+
+    et = event["type"]
+    if et in ("checkout.session.completed",):
+        session = event["data"]["object"]
+        user_id = session.get("metadata", {}).get("user_id")
+        if user_id and session.get("subscription"):
+            sub = stripe.Subscription.retrieve(session["subscription"])
+            period_end = datetime.utcfromtimestamp(sub["current_period_end"])
+            with engine.connect() as conn:
+                ensure_subscriptions_table(conn)
+                upsert_sub(conn, user_id, session["customer"], sub["id"], "active", "pro", period_end)
+                conn.commit()
+
+    elif et in ("customer.subscription.updated", "customer.subscription.deleted"):
+        sub = event["data"]["object"]
+        customer_id = sub["customer"]
+        sub_status = sub["status"]
+        tier = "pro" if sub_status == "active" else "free"
+        period_end = datetime.utcfromtimestamp(sub["current_period_end"]) if sub.get("current_period_end") else None
+        with engine.connect() as conn:
+            ensure_subscriptions_table(conn)
+            row = conn.execute(text(
+                "SELECT user_id FROM subscriptions WHERE stripe_customer_id = :cid LIMIT 1"
+            ), {"cid": customer_id}).fetchone()
+            if row:
+                upsert_sub(conn, row[0], customer_id, sub["id"], sub_status, tier, period_end)
+                conn.commit()
+
+    return {"received": True}
+
 @app.get("/draw/{game}/{draw_date}")
 def get_draw_by_date(game: str, draw_date: str):
     """Look up actual winning numbers for a game and date.
@@ -317,7 +457,7 @@ class SaveSnapshotRequest(BaseModel):
     snapshot: dict
 
 @app.post("/pattern-snapshot/save")
-def save_pattern_snapshot(req: SaveSnapshotRequest, user_id: str = Depends(get_user_id)):
+def save_pattern_snapshot(req: SaveSnapshotRequest, user_id: str = Depends(require_pro)):
     try:
         import json
         with engine.connect() as conn:
@@ -489,6 +629,14 @@ def save_prediction(req: SavePredictionRequest, user_id: str = Depends(get_user_
     try:
         with engine.connect() as conn:
             ensure_predictions_table(conn)
+            ensure_subscriptions_table(conn)
+            tier = get_user_tier(user_id)
+            if tier != "pro":
+                count = conn.execute(text(
+                    "SELECT COUNT(*) FROM predictions WHERE user_id = :uid"
+                ), {"uid": user_id}).scalar()
+                if count >= 3:
+                    raise HTTPException(status_code=402, detail="Free plan limit: 3 saved predictions. Upgrade to Pro for unlimited.")
             result = conn.execute(text("""
                 INSERT INTO predictions
                 (user_id, birth_date, draw_date, game, primary_numbers, bonus_number,
@@ -635,7 +783,7 @@ def frequency(game: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/pattern-match-draws/{game}")
-def pattern_match_draws(game: str, limit: int = 100, include_secondary: bool = True):
+def pattern_match_draws(game: str, limit: int = 100, include_secondary: bool = True, user_id: str = Depends(require_pro)):
     try:
         from match_engine import recent_draws_for_picker
         return {"success": True, "draws": recent_draws_for_picker(game, limit=limit, include_secondary=include_secondary)}
@@ -650,6 +798,7 @@ def pattern_match_route(
     bonus: Optional[int] = None,
     limit: int = 10,
     include_secondary: bool = True,
+    user_id: str = Depends(require_pro),
 ):
     try:
         from match_engine import pattern_match
@@ -807,7 +956,7 @@ def predict_historical(req: PredictionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/pattern-analysis")
-def pattern_analysis(req: PredictionRequest):
+def pattern_analysis(req: PredictionRequest, user_id: str = Depends(require_pro)):
     try:
         from pattern_engine import pattern_predict
         result = pattern_predict(req.game or 'powerball', draw_type=req.draw_type or 'main')

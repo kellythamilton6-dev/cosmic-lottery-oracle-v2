@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { SubscriptionProvider } from './contexts/SubscriptionContext'
 import Auth from './pages/Auth'
 import Oracle from './pages/Oracle'
 
@@ -14,7 +15,13 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/auth" element={user ? <Navigate to="/" replace /> : <Auth />} />
-      <Route path="/" element={<ProtectedRoute><Oracle /></ProtectedRoute>} />
+      <Route path="/" element={
+        <ProtectedRoute>
+          <SubscriptionProvider>
+            <Oracle />
+          </SubscriptionProvider>
+        </ProtectedRoute>
+      } />
     </Routes>
   )
 }

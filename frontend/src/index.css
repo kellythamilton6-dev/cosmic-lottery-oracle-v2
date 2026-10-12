@@ -90,3 +90,17 @@ body {
 .btn-signout:hover { background: rgba(255,255,255,0.2); }
 
 .oracle-frame { flex: 1; border: none; width: 100%; }
+
+.btn-upgrade {
+  background: linear-gradient(135deg, #F0B84A, #D85A30);
+  color: white; border: none; padding: 6px 14px; border-radius: 6px;
+  cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.btn-upgrade:hover { opacity: 0.9; }
+
+.btn-pro {
+  background: rgba(95,217,174,0.15); color: #5FD9AE;
+  border: 1px solid rgba(95,217,174,0.4); padding: 6px 14px;
+  border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.btn-pro:hover { background: rgba(95,217,174,0.25); }

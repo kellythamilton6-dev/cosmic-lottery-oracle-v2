@@ -188,8 +188,8 @@
 
 <nav class="nav">
   <button class="nav-btn active" onclick="showPanel('generate',this)">✦ Generate</button>
-  <button class="nav-btn" onclick="showPanel('patternmatch',this)">🧩 Pattern Match</button>
-  <button class="nav-btn" onclick="showPanel('patterns',this)">🔍 Pattern Analysis</button>
+  <button class="nav-btn" onclick="if(!requirePro('Pattern Match'))return;showPanel('patternmatch',this)">🧩 Pattern Match <span data-pro-badge style="font-size:9px;background:rgba(240,184,74,0.2);color:#F0B84A;padding:1px 5px;border-radius:4px;vertical-align:middle;">PRO</span></button>
+  <button class="nav-btn" onclick="if(!requirePro('Pattern Analysis'))return;showPanel('patterns',this)">🔍 Pattern Analysis <span data-pro-badge style="font-size:9px;background:rgba(240,184,74,0.2);color:#F0B84A;padding:1px 5px;border-radius:4px;vertical-align:middle;">PRO</span></button>
   <button class="nav-btn" onclick="showPanel('history',this)">📋 History</button>
   <button class="nav-btn" onclick="showPanel('accuracy',this)">📊 Accuracy</button>
   <button class="nav-btn" onclick="showPanel('tsf',this)">🧭 Structural Forecast</button>
@@ -207,8 +207,8 @@
       </div>
       <div style="display:flex;gap:8px;">
         <button id="mode-cosmic" class="btn btn-primary" style="font-size:13px;padding:8px 18px;" onclick="setMode('cosmic')">🔮 Cosmic</button>
-        <button id="mode-pattern" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('pattern')">📊 Historical Trends</button>
-        <button id="mode-tsf" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="setMode('tsf')">🧭 Structural Forecast</button>
+        <button id="mode-pattern" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="if(!requirePro('Historical Trends mode'))return;setMode('pattern')">📊 Historical Trends <span data-pro-badge style="font-size:9px;background:rgba(240,184,74,0.2);color:#F0B84A;padding:1px 5px;border-radius:4px;vertical-align:middle;">PRO</span></button>
+        <button id="mode-tsf" class="btn btn-secondary" style="font-size:13px;padding:8px 18px;" onclick="if(!requirePro('Structural Forecast mode'))return;setMode('tsf')">🧭 Structural Forecast <span data-pro-badge style="font-size:9px;background:rgba(240,184,74,0.2);color:#F0B84A;padding:1px 5px;border-radius:4px;vertical-align:middle;">PRO</span></button>
       </div>
     </div>
 
@@ -332,6 +332,7 @@
         </div>
         <div class="reading" id="r-reading"></div>
         <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;">
+          <span id="free-save-limit" style="display:none;font-size:11px;color:#F0B84A;">Free: 3 saves max</span>
           <div style="display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
             <button id="save-pred-btn" class="btn btn-secondary" style="font-size:13px;padding:7px 14px;border:none;border-radius:0;" onclick="savePrediction()">💾 Save</button>
             <select id="save-set-select" style="font-size:12px;padding:7px 8px;background:var(--bg2);color:var(--text);border:none;border-left:1px solid var(--border);border-radius:0;cursor:pointer;" onchange="document.getElementById('save-pred-btn').textContent='💾 Save ' + this.options[this.selectedIndex].text">
@@ -707,6 +708,7 @@ let lastTsfGenResult = null;
 let currentMode = 'cosmic';
 let savedPredictions = [];
 let authToken = null;
+let userTier = 'free'; // 'free' | 'pro' — set via postMessage from React shell
 let patternSnapshots = {}; // keyed by game, holds last-fetched snapshot arrays
 let lastPmStructure = null; // positional_averages from last pattern match run
 
@@ -752,9 +754,62 @@ document.getElementById('drawdate').value = localDateStr();
 window.addEventListener('message', (e) => {
   if (e.data && e.data.type === 'AUTH' && e.data.token) {
     authToken = e.data.token;
+    userTier = e.data.tier === 'pro' ? 'pro' : 'free';
+    applyTierUI();
     loadPredictions();
   }
 });
+
+function applyTierUI() {
+  const isPro = userTier === 'pro';
+  // Pattern Match tab gating
+  const pmTab = document.querySelector('[onclick*="pattern-match"]') || document.querySelector('[onclick="showPanel(\'pm\')"]');
+  if (pmTab) {
+    pmTab.setAttribute('data-requires-pro', '1');
+  }
+  // Show/hide pro badges on tabs
+  document.querySelectorAll('[data-pro-badge]').forEach(el => {
+    el.style.display = isPro ? 'none' : 'inline';
+  });
+  // Update save button limit indicator
+  const saveLimit = document.getElementById('free-save-limit');
+  if (saveLimit) saveLimit.style.display = isPro ? 'none' : 'inline';
+}
+
+function requirePro(featureName) {
+  if (userTier === 'pro') return true;
+  showUpgradeModal(featureName);
+  return false;
+}
+
+function showUpgradeModal(featureName) {
+  const existing = document.getElementById('upgrade-modal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'upgrade-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:#161330;border:1px solid rgba(240,184,74,0.4);border-radius:16px;padding:32px;max-width:380px;width:100%;text-align:center;box-shadow:0 0 60px rgba(240,184,74,0.15);">
+      <div style="font-size:32px;margin-bottom:12px;">⚡</div>
+      <h2 style="margin:0 0 8px;color:#F0B84A;font-size:20px;">Pro Feature</h2>
+      <p style="color:#9B98C4;font-size:14px;line-height:1.6;margin:0 0 8px;">${featureName} is available on the Pro plan.</p>
+      <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:16px;margin:16px 0;text-align:left;">
+        <div style="font-size:13px;color:#E8E6F8;margin-bottom:8px;font-weight:600;">✦ Pro includes:</div>
+        <ul style="margin:0;padding-left:18px;color:#9B98C4;font-size:13px;line-height:2;">
+          <li>Pattern Match & structure-guided picks</li>
+          <li>Historical Trends mode</li>
+          <li>Pattern Analysis (10-system engine)</li>
+          <li>Unlimited saved predictions</li>
+          <li>Full accuracy history & snapshots</li>
+        </ul>
+      </div>
+      <button onclick="window.parent.postMessage({type:'UPGRADE'},'*')" style="width:100%;background:linear-gradient(135deg,#F0B84A,#D85A30);color:white;border:none;padding:12px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">⚡ Upgrade to Pro — $7.99/mo</button>
+      <button onclick="document.getElementById('upgrade-modal').remove()" style="width:100%;background:transparent;color:#9B98C4;border:1px solid rgba(255,255,255,0.15);padding:10px;border-radius:8px;font-size:14px;cursor:pointer;">Maybe later</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
 
 async function loadPredictions() {
   if (!authToken) return;
@@ -1611,6 +1666,7 @@ async function savePrediction(setKeyArg) {
   if(!lastResult) return;
   if(!authToken) { alert('Please sign in to save predictions.'); return; }
   const btn = document.getElementById('save-pred-btn');
+  const origText = btn.textContent;
   const setKey = setKeyArg || document.getElementById('save-set-select')?.value || 'primary';
 
   // Resolve numbers for the chosen set
@@ -1658,13 +1714,19 @@ async function savePrediction(setKeyArg) {
       })
     });
     const data = await res.json();
+    if (res.status === 402) {
+      showUpgradeModal('Unlimited saved predictions');
+      btn.disabled = false;
+      btn.textContent = origText;
+      return;
+    }
     if(!data.success) throw new Error('Save failed');
     await loadPredictions();
     btn.textContent = '✓ Saved!';
   } catch (e) {
     btn.textContent = '✗ Save failed';
   } finally {
-    setTimeout(()=>{ btn.textContent='💾 Save prediction'; btn.disabled = false; }, 1500);
+    setTimeout(()=>{ btn.textContent = origText; btn.disabled = false; }, 1500);
   }
 }
 
@@ -2278,6 +2340,7 @@ function paOnGameChange() {
 }
 
 async function runPatternAnalysis() {
+  if (!requirePro('Pattern Analysis')) return;
   const game = document.getElementById('pattern-analysis-game').value;
   const drawType = document.getElementById('pattern-analysis-drawtype').value;
   const btn = document.getElementById('pattern-btn');
