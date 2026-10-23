@@ -3171,6 +3171,72 @@ async function commitTsfForecast() {
   loadTsfHistory();
 }
 
+// Committed forecasts live in Track Record long after the Run Analysis
+// result that produced them is gone, so these save from the stored
+// forecast row rather than window.lastTsfResult.
+function tsfCommittedLineSaved(f, l) {
+  return savedPredictions.some(p =>
+    p.game === f.game && p.draw_date === f.target_draw_date && p.mode === 'tsf' &&
+    p.nakshatra === l.hypothesis && p.primary.join(',') === l.numbers.join(','));
+}
+
+async function postCommittedTsfLine(f, l) {
+  const res = await fetch(`${API}/save-prediction`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+    body: JSON.stringify({
+      birth_date: null,
+      draw_date: f.target_draw_date,
+      game: f.game,
+      primary_numbers: l.numbers.join(','),
+      bonus_number: null,
+      moon_phase: 'N/A',
+      sun_sign: 'N/A',
+      nakshatra: l.hypothesis,
+      life_path: 0,
+      mode: 'tsf',
+    })
+  });
+  const data = await res.json();
+  if(!data.success) throw new Error('Save failed');
+}
+
+async function saveCommittedTsfLines(forecastId, hypothesisLabel) {
+  const f = (window.tsfHistoryForecasts || []).find(x => x.id === forecastId);
+  if(!f) return;
+  if(!authToken) { alert('Please sign in to save predictions.'); return; }
+  const targets = f.lines.filter(l =>
+    (hypothesisLabel === null || l.hypothesis === hypothesisLabel) && !tsfCommittedLineSaved(f, l));
+  if(!targets.length) return;
+  const ids = [`tsf-hist-save-all-${f.id}`, ...targets.map(l => `tsf-hist-save-${f.id}-${l.hypothesis}`)];
+  ids.forEach(id => { const el = document.getElementById(id); if(el) el.innerHTML = '<span style="font-size:11px;color:var(--text2);">Saving…</span>'; });
+  try {
+    for(const l of targets) await postCommittedTsfLine(f, l);
+    await loadPredictions();
+  } catch(e) {
+    ids.forEach(id => { const el = document.getElementById(id); if(el) el.innerHTML = '<span style="color:#F06A6A;font-size:11px;">✗ Save failed</span>'; });
+    setTimeout(() => renderTsfCommittedSaveState(f), 2000);
+    return;
+  }
+  (window.tsfHistoryForecasts || []).forEach(renderTsfCommittedSaveState);
+}
+
+function renderTsfCommittedSaveState(f) {
+  let allSaved = true;
+  f.lines.forEach(l => {
+    const saved = tsfCommittedLineSaved(f, l);
+    allSaved = allSaved && saved;
+    const el = document.getElementById(`tsf-hist-save-${f.id}-${l.hypothesis}`);
+    if(el) el.innerHTML = saved
+      ? '<span style="color:#5FD9AE;font-size:11px;">✓ Saved</span>'
+      : `<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="saveCommittedTsfLines(${f.id},'${l.hypothesis}')">💾 Save</button>`;
+  });
+  const allEl = document.getElementById(`tsf-hist-save-all-${f.id}`);
+  if(allEl) allEl.innerHTML = allSaved
+    ? '<span style="color:#5FD9AE;font-size:11px;">✓ All lines saved to Accuracy tab</span>'
+    : `<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="saveCommittedTsfLines(${f.id},null)">💾 Save all lines to Accuracy tab</button>`;
+}
+
 async function saveTsfLine(hypothesisLabel) {
   const r = window.lastTsfResult;
   if(!r) return;
@@ -3200,6 +3266,7 @@ async function saveTsfLine(hypothesisLabel) {
     const data = await res.json();
     if(!data.success) throw new Error('Save failed');
     await loadPredictions();
+    (window.tsfHistoryForecasts || []).forEach(renderTsfCommittedSaveState);
     resultEl.innerHTML = '<span style="color:#5FD9AE;">✓ Saved to Accuracy tab</span>';
   } catch(e) {
     resultEl.innerHTML = '<span style="color:#F06A6A;">✗ Save failed</span>';
@@ -3437,8 +3504,10 @@ function renderTsfTrackRecord(forecasts, summary) {
               <div style="min-width:100px;font-size:12px;color:var(--text2);font-weight:600;flex-shrink:0;">${l.hypothesis}</div>
               <div class="balls-row" style="margin:0;flex-wrap:nowrap;">${tsfBallsWithHits(l.numbers, actualSet, TSF_LINE_BALL_CLASS[l.hypothesis])}</div>
               <div style="font-size:11px;color:var(--text2);white-space:nowrap;">${sc ? `${sc.exact_hits} hit${sc.exact_hits===1?'':'s'} · ${dc.matched}/${dc.total} dims` : 'pending'}</div>
+              <div id="tsf-hist-save-${f.id}-${l.hypothesis}" style="white-space:nowrap;"></div>
             </div>`;
           }).join('')}
+          <div id="tsf-hist-save-all-${f.id}"></div>
         </div>
         <div style="margin-top:14px;">
           ${f.lines.map(l=>{
@@ -3463,6 +3532,9 @@ function renderTsfTrackRecord(forecasts, summary) {
       ${detailHtml}
     </div>`;
   }).join('');
+
+  window.tsfHistoryForecasts = forecasts;
+  forecasts.forEach(renderTsfCommittedSaveState);
 
   if(window.lastTsfResult) {
     const already = forecasts.find(f=>f.target_draw_date === window.lastTsfResult.target_draw_date);
