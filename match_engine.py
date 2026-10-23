@@ -16,6 +16,14 @@ DB_URL = (
     or os.environ.get("DATABASE_PUBLIC_URL")
     or "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery_v2"
 )
+# Same normalization api.py, cosmic_engine.py and pattern_engine.py already
+# do: only psycopg2-binary is installed, so a postgresql+psycopg:// URL
+# (psycopg3) fails with "No module named 'psycopg'". This was the one engine
+# that never got it, which 500'd /tsf/forecast and /tsf/calibration-report
+# (the only paths that reach match_engine) while everything else stayed up.
+DB_URL = DB_URL.replace("postgresql+psycopg://", "postgresql+psycopg2://")
+if not DB_URL.startswith("postgresql+psycopg2://"):
+    DB_URL = DB_URL.replace("postgresql://", "postgresql+psycopg2://").replace("postgres://", "postgresql+psycopg2://")
 engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=280)
 
 GAME_CONFIG = {
