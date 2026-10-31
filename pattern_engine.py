@@ -372,6 +372,9 @@ def cluster_analysis(draws, max_num=69):
 # MASTER PREDICTION FUNCTION
 # ============================================================
 
+SUM_RANGE_MAX_ATTEMPTS = 500
+
+
 def pattern_predict(game='powerball', confidence_weight=True, weights=None, draw_type='main'):
     """
     weights: dict with keys frequency, overdue, trend, moon, pairs
@@ -473,12 +476,33 @@ def pattern_predict(game='powerball', confidence_weight=True, weights=None, draw
                     break
         return sorted(result)
 
-    primary = weighted_pick(main_count)
-    alt_a = weighted_pick(main_count)
-    alt_b = weighted_pick(main_count)
-
-    # Verify sum is in optimal range
+    # The tab advertises an "optimal sum" range (avg +/- 1 std of historical
+    # sums), so each set has to land in it. This used to just draw three
+    # independent weighted-random sets and only *report* whether Primary
+    # happened to fit -- roughly a third of all sets missed it, and Alt A /
+    # Alt B were never checked at all. Redraw (weights unchanged, so this is
+    # the same distribution conditioned on the range) until a set fits and
+    # differs from the sets already chosen; if somehow nothing fits, use the
+    # attempt closest to the range rather than loop forever.
     opt_low, opt_high = balance['optimal_sum_range']
+
+    def pick_set_in_range(taken):
+        closest, closest_gap = None, None
+        for _ in range(SUM_RANGE_MAX_ATTEMPTS):
+            candidate = weighted_pick(main_count)
+            if candidate in taken:
+                continue
+            total = sum(candidate)
+            if opt_low <= total <= opt_high:
+                return candidate
+            gap = min(abs(total - opt_low), abs(total - opt_high))
+            if closest is None or gap < closest_gap:
+                closest, closest_gap = candidate, gap
+        return closest if closest is not None else weighted_pick(main_count)
+
+    primary = pick_set_in_range([])
+    alt_a = pick_set_in_range([primary])
+    alt_b = pick_set_in_range([primary, alt_a])
 
     # Bonus ball
     bonus_scores = {n: 50.0 for n in range(1, bonus_max + 1)}
@@ -547,7 +571,11 @@ def pattern_predict(game='powerball', confidence_weight=True, weights=None, draw
         'sum_check': {
             'primary_sum': sum(primary),
             'in_optimal_range': opt_low <= sum(primary) <= opt_high,
-            'optimal_range': [opt_low, opt_high]
+            'optimal_range': [opt_low, opt_high],
+            'alt_a_sum': sum(alt_a),
+            'alt_a_in_range': opt_low <= sum(alt_a) <= opt_high,
+            'alt_b_sum': sum(alt_b),
+            'alt_b_in_range': opt_low <= sum(alt_b) <= opt_high,
         }
     }
 

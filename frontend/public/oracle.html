@@ -2421,6 +2421,11 @@ function renderPatternDashboard(r) {
     .sort((a,b)=>b[1].overdue_score-a[1].overdue_score)
     .slice(0,10);
 
+  const [sumLo, sumHi] = r.balance.optimal_sum_range;
+  const sumLine = (set) => {
+    const t = set.reduce((a,b)=>a+b,0);
+    return `Sum: ${t} ${t>=sumLo && t<=sumHi ? '✓ optimal' : '⚠ outside range'}`;
+  };
   document.getElementById('pattern-results').innerHTML = `
     <div class="card" style="border-color:var(--purple);">
       <h2>✦ Pattern-Based Predictions</h2>
@@ -2429,17 +2434,17 @@ function renderPatternDashboard(r) {
         <div style="background:var(--bg3);border-radius:10px;padding:14px;">
           <div class="section-label">Primary prediction</div>
           <div class="balls-row">${ballsHtml(r.primary,r.bonus_primary,'ball-purple')}</div>
-          <div style="font-size:12px;color:var(--text2);">Sum: ${r.primary.reduce((a,b)=>a+b,0)} ${r.sum_check.in_optimal_range?'✓ optimal':'⚠ outside range'}</div>
+          <div style="font-size:12px;color:var(--text2);">${sumLine(r.primary)}</div>
         </div>
         <div style="background:var(--bg3);border-radius:10px;padding:14px;">
           <div class="section-label">Alternative A</div>
           <div class="balls-row">${ballsHtml(r.alt_a,r.bonus_alt_a,'ball-teal')}</div>
-          <div style="font-size:12px;color:var(--text2);">Sum: ${r.alt_a.reduce((a,b)=>a+b,0)}</div>
+          <div style="font-size:12px;color:var(--text2);">${sumLine(r.alt_a)}</div>
         </div>
         <div style="background:var(--bg3);border-radius:10px;padding:14px;">
           <div class="section-label">Alternative B</div>
           <div class="balls-row">${ballsHtml(r.alt_b,r.bonus_alt_b,'ball-amber')}</div>
-          <div style="font-size:12px;color:var(--text2);">Sum: ${r.alt_b.reduce((a,b)=>a+b,0)}</div>
+          <div style="font-size:12px;color:var(--text2);">${sumLine(r.alt_b)}</div>
         </div>
       </div>
       <div class="grid4" style="margin-top:12px;">
