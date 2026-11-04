@@ -706,6 +706,7 @@
 const API = 'https://cosmic-lottery-oracle-v2-production.up.railway.app';
 let lastResult = null;
 let lastTsfGenResult = null;
+let lastPatternAnalysisResult = null;
 let currentMode = 'cosmic';
 let savedPredictions = [];
 let authToken = null;
@@ -2385,6 +2386,7 @@ async function runPatternAnalysis() {
     steps.forEach(s => document.getElementById(s).style.color = '#5FD9AE');
     overlay.style.display = 'none';
     if(data.success) {
+      lastPatternAnalysisResult = { ...data.result, game, draw_type: drawType, draw_date: localDateStr() };
       renderPatternDashboard(data.result);
       const drawTypeLabel = drawType === 'doubleplay' ? 'Double Play' : 'Main';
       document.getElementById('pattern-last-run').textContent = `Last run: ${new Date().toLocaleTimeString()} · ${drawTypeLabel} · ${data.result.total_draws} draws`;
@@ -2455,6 +2457,17 @@ function renderPatternDashboard(r) {
         <div class="metric"><div class="metric-label">Recommended high/low</div><div class="metric-value" style="font-size:15px;">${r.balance.recommended_high_low}</div></div>
         <div class="metric"><div class="metric-label">Top confidence #</div><div class="metric-value" style="font-size:15px;">${r.top_20_by_confidence[0]?.number||'—'}</div></div>
         <div class="metric"><div class="metric-label">Draws analyzed</div><div class="metric-value">${r.total_draws}</div></div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+          <button id="pa-save-btn" class="btn btn-secondary" style="font-size:13px;padding:7px 14px;border:none;border-radius:0;" onclick="savePatternAnalysisPrediction()">💾 Save</button>
+          <select id="pa-save-set" style="font-size:12px;padding:7px 8px;background:var(--bg2);color:var(--text);border:none;border-left:1px solid var(--border);border-radius:0;cursor:pointer;" onchange="document.getElementById('pa-save-btn').textContent='💾 Save ' + this.options[this.selectedIndex].text">
+            <option value="primary">Primary</option>
+            <option value="alt_a">Alt A</option>
+            <option value="alt_b">Alt B</option>
+          </select>
+        </div>
+        <span id="pa-save-msg" style="font-size:12px;color:#5FD9AE;display:none;">✓ Saved!</span>
       </div>
     </div>
 
@@ -2562,6 +2575,54 @@ function renderPatternDashboard(r) {
       </div>
     </div>`;
 }
+async function savePatternAnalysisPrediction() {
+  if (!lastPatternAnalysisResult) return;
+  if (!authToken) { alert('Please sign in to save predictions.'); return; }
+  const btn = document.getElementById('pa-save-btn');
+  const setKey = document.getElementById('pa-save-set')?.value || 'primary';
+  const r = lastPatternAnalysisResult;
+
+  let numbers, bonus;
+  if (setKey === 'alt_a') { numbers = r.alt_a; bonus = r.bonus_alt_a ?? null; }
+  else if (setKey === 'alt_b') { numbers = r.alt_b; bonus = r.bonus_alt_b ?? null; }
+  else { numbers = r.primary; bonus = r.bonus_primary ?? null; }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  try {
+    const res = await fetch(`${API}/save-prediction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+      body: JSON.stringify({
+        birth_date: document.getElementById('birthdate')?.value || null,
+        draw_date: r.draw_date || localDateStr(),
+        game: r.game,
+        primary_numbers: numbers.join(','),
+        bonus_number: bonus,
+        moon_phase: r.current_moon_phase || 'Pattern',
+        sun_sign: 'N/A',
+        nakshatra: 'N/A',
+        life_path: 0,
+        mode: 'pattern',
+        weights_json: JSON.stringify({ draws_analyzed: r.total_draws, draw_type: r.draw_type })
+      })
+    });
+    const data = await res.json();
+    if (res.status === 402) { showUpgradeModal('Unlimited saved predictions'); return; }
+    if (!data.success) throw new Error('Save failed');
+    const msg = document.getElementById('pa-save-msg');
+    msg.style.display = 'inline';
+    setTimeout(() => { msg.style.display = 'none'; }, 2500);
+    loadPredictions();
+  } catch(e) {
+    alert('Could not save prediction.');
+  } finally {
+    btn.disabled = false;
+    const setLabel = document.getElementById('pa-save-set')?.options[document.getElementById('pa-save-set')?.selectedIndex]?.text || '';
+    btn.textContent = setLabel ? `💾 Save ${setLabel}` : '💾 Save';
+  }
+}
+
 loadMoon();
 updatePredList();
 
