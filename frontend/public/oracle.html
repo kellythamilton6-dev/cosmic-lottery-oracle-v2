@@ -760,6 +760,7 @@ window.addEventListener('message', (e) => {
     userTier = e.data.tier === 'pro' ? 'pro' : 'free';
     applyTierUI();
     loadPredictions();
+    pmLoadDrawList(document.getElementById('pm-game').value);
   }
 });
 
