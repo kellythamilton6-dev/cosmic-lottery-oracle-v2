@@ -731,7 +731,9 @@ function pmStructureFromResult(result, game) {
 // re-matching against the latest draw here keeps Generate self-contained.
 async function refreshLastPmStructure(game) {
   try {
-    const res = await fetch(`${API}/pattern-match/${game}?limit=10&include_secondary=true`);
+    const res = await fetch(`${API}/pattern-match/${game}?limit=10&include_secondary=true`, {
+      headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+    });
     const data = await res.json();
     if (data.success && data.result) {
       const structure = pmStructureFromResult(data.result, game);
@@ -2703,7 +2705,7 @@ function pmRefresh(customOverride) {
   loadingEl.innerHTML = '<span class="loader"></span> Analyzing draw structure...';
   document.getElementById('pm-content').style.display = 'none';
 
-  fetch(url)
+  fetch(url, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} })
     .then(r => r.json())
     .then(data => {
       if (!data.success) throw new Error(data.detail || 'Failed to load pattern match');
