@@ -2618,7 +2618,9 @@ function pmOnToggleChange() {
 function pmLoadDrawList(game) {
   const sel = document.getElementById('pm-draw-select');
   sel.innerHTML = '<option value="">Loading...</option>';
-  fetch(`${API}/pattern-match-draws/${game}?limit=5000&include_secondary=${pmIncludeSecondary()}`)
+  fetch(`${API}/pattern-match-draws/${game}?limit=5000&include_secondary=${pmIncludeSecondary()}`, {
+      headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+    })
     .then(r => r.json())
     .then(data => {
       pmDraws = data.draws || [];
