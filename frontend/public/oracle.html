@@ -2374,7 +2374,7 @@ async function runPatternAnalysis() {
   try {
     const res = await fetch(`${API}/pattern-analysis`, {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: {'Content-Type':'application/json', 'Authorization': `Bearer ${authToken}`},
       body: JSON.stringify({ birth_date: '1985-01-01', game, draw_type: drawType })
     });
     const data = await res.json();
