@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from sqlalchemy import create_engine, text
 
-DB_URL = "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery"
+DB_URL = "postgresql://postgres@localhost:5432/cosmic_lottery"
 engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=280)
 
 # ============================================================

@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, text
 DB_URL = (
     os.environ.get("DATABASE_URL")
     or os.environ.get("DATABASE_PUBLIC_URL")
-    or "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery_v2"
+    or "postgresql://postgres@localhost:5432/cosmic_lottery_v2"
 )
 # Same normalization api.py, cosmic_engine.py and pattern_engine.py already
 # do: only psycopg2-binary is installed, so a postgresql+psycopg:// URL

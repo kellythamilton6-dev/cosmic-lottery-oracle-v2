@@ -30,7 +30,7 @@ from sqlalchemy import create_engine, text
 DB_URL = (
     os.environ.get("DATABASE_URL")
     or os.environ.get("DATABASE_PUBLIC_URL")
-    or "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery_v2"
+    or "postgresql://postgres@localhost:5432/cosmic_lottery_v2"
 )
 engine = create_engine(DB_URL)
 

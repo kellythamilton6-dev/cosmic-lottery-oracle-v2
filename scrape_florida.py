@@ -1,3 +1,4 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -6,7 +7,7 @@ from datetime import datetime
 import time
 import re
 
-DB_URL = "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery"
+DB_URL = os.environ.get("DATABASE_URL") or "postgresql://postgres@localhost:5432/cosmic_lottery"
 engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=280)
 
 # ============================================================

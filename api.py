@@ -73,7 +73,7 @@ def ensure_subscriptions_table(conn):
 DB_URL = (
     os.environ.get("DATABASE_URL") or
     os.environ.get("DATABASE_PUBLIC_URL") or
-    "postgresql://postgres:Rileyrose69!@localhost:5432/cosmic_lottery_v2"
+    "postgresql://postgres@localhost:5432/cosmic_lottery_v2"
 )
 DB_URL = DB_URL.replace("postgresql+psycopg://", "postgresql+psycopg2://")
 if not DB_URL.startswith("postgresql+psycopg2://"):
